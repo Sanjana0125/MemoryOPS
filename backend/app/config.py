@@ -21,7 +21,7 @@ class Settings(BaseModel):
     VERSION: str = "0.1.0"
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
     CORS_ORIGINS: list[str] = Field(default_factory=get_cors_origins)
-    HINDSIGHT_API_URL: str = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
+    HINDSIGHT_API_URL: str = os.getenv("HINDSIGHT_API_URL", "https://api.hindsight.dev")
     HINDSIGHT_API_KEY: str | None = os.getenv("HINDSIGHT_API_KEY", None)
     HINDSIGHT_BANK_ID: str = os.getenv("HINDSIGHT_BANK_ID", "incidentiq")
     GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY", None)
