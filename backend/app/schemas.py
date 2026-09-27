@@ -1,6 +1,6 @@
-from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Any
 from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime
 
 class IncidentBase(BaseModel):
     service: str = Field(..., min_length=1, description="Service name affected by the incident")
@@ -34,3 +34,14 @@ class IncidentResponse(IncidentBase):
     id: str
     created_at: datetime
     resolved_at: Optional[datetime] = None
+
+class MemoryRecallQuery(BaseModel):
+    query: Optional[str] = Field(default=None, description="Search query for historical incidents")
+    service: Optional[str] = Field(default=None, description="Optional service name filter/context")
+    error: Optional[str] = Field(default=None, description="Optional error description")
+    symptoms: Optional[str] = Field(default=None, description="Optional symptoms description")
+    tags: Optional[List[str]] = Field(default=None, description="Optional tags filter")
+
+class MemoryReflectQuery(BaseModel):
+    query: str = Field(..., min_length=1, description="Query to reflect upon across historical incidents")
+    context: Optional[str] = Field(default=None, description="Optional context for reflection")

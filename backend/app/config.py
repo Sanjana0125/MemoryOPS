@@ -15,5 +15,8 @@ class Settings(BaseModel):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ]
+    HINDSIGHT_API_URL: str = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
+    HINDSIGHT_API_KEY: str | None = os.getenv("HINDSIGHT_API_KEY", None)
+    HINDSIGHT_BANK_ID: str = os.getenv("HINDSIGHT_BANK_ID", "incidentiq")
 
 settings = Settings()

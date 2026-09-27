@@ -11,7 +11,10 @@ from app.schemas import (
     IncidentUpdate,
     IncidentResolve,
     IncidentResponse,
+    MemoryRecallQuery,
+    MemoryReflectQuery,
 )
+from app.hindsight_service import hindsight_service
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["Incidents"])
 
@@ -26,7 +29,6 @@ def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
                 detail=f"Incident with ID '{incident_id}' already exists."
             )
     else:
-        # Generate auto ID e.g. INC-5A2B
         incident_id = f"INC-{uuid.uuid4().hex[:6].upper()}"
 
     now = datetime.now(timezone.utc)
@@ -46,6 +48,20 @@ def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
     db.add(incident)
     db.commit()
     db.refresh(incident)
+
+    # RETAIN if incident is created as resolved
+    if incident.outcome.lower() == "resolved":
+        hindsight_service.retain_incident(
+            incident_id=incident.id,
+            service=incident.service,
+            error=incident.error,
+            symptoms=incident.symptoms,
+            severity=incident.severity,
+            root_cause=incident.root_cause,
+            resolution=incident.resolution,
+            outcome=incident.outcome,
+        )
+
     return incident
 
 @router.get("", response_model=List[IncidentResponse])
@@ -64,6 +80,40 @@ def get_incidents(
         query = query.filter(Incident.outcome.ilike(outcome))
 
     return query.order_by(Incident.created_at.desc()).all()
+
+@router.post("/recall")
+def recall_similar_incidents(query_in: MemoryRecallQuery):
+    """
+    RECALL: Retrieve similar historical incidents/memories from Hindsight for a new incident or query.
+    """
+    search_parts = []
+    if query_in.query:
+        search_parts.append(query_in.query)
+    if query_in.service:
+        search_parts.append(f"Service: {query_in.service}")
+    if query_in.error:
+        search_parts.append(f"Error: {query_in.error}")
+    if query_in.symptoms:
+        search_parts.append(f"Symptoms: {query_in.symptoms}")
+
+    full_query = " | ".join(search_parts) if search_parts else "historical incidents"
+
+    result = hindsight_service.recall_memories(
+        query=full_query,
+        tags=query_in.tags,
+    )
+    return result
+
+@router.post("/reflect")
+def reflect_incident_patterns(query_in: MemoryReflectQuery):
+    """
+    REFLECT: Synthesize overall patterns and insights across multiple incident memories in Hindsight.
+    """
+    result = hindsight_service.reflect_patterns(
+        query=query_in.query,
+        context=query_in.context,
+    )
+    return result
 
 @router.get("/{incident_id}", response_model=IncidentResponse)
 def get_incident(incident_id: str, db: Session = Depends(get_db)):
@@ -98,6 +148,20 @@ def update_incident(
 
     db.commit()
     db.refresh(incident)
+
+    # RETAIN when updated to resolved
+    if incident.outcome.lower() == "resolved":
+        hindsight_service.retain_incident(
+            incident_id=incident.id,
+            service=incident.service,
+            error=incident.error,
+            symptoms=incident.symptoms,
+            severity=incident.severity,
+            root_cause=incident.root_cause,
+            resolution=incident.resolution,
+            outcome=incident.outcome,
+        )
+
     return incident
 
 @router.post("/{incident_id}/resolve", response_model=IncidentResponse)
@@ -121,4 +185,17 @@ def resolve_incident(
 
     db.commit()
     db.refresh(incident)
+
+    # RETAIN in Hindsight upon resolution
+    hindsight_service.retain_incident(
+        incident_id=incident.id,
+        service=incident.service,
+        error=incident.error,
+        symptoms=incident.symptoms,
+        severity=incident.severity,
+        root_cause=incident.root_cause,
+        resolution=incident.resolution,
+        outcome=incident.outcome,
+    )
+
     return incident

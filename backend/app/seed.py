@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.models import Incident
+from app.hindsight_service import hindsight_service
 
 SEED_INCIDENTS = [
     {
@@ -59,4 +60,17 @@ def seed_incidents(db: Session) -> None:
         if not existing:
             incident = Incident(**data)
             db.add(incident)
+
+        # Ensure seed incidents (including INC-101) are retained into Hindsight
+        hindsight_service.retain_incident(
+            incident_id=data["id"],
+            service=data["service"],
+            error=data["error"],
+            symptoms=data["symptoms"],
+            severity=data["severity"],
+            root_cause=data.get("root_cause"),
+            resolution=data.get("resolution"),
+            outcome=data.get("outcome", "Resolved"),
+        )
+
     db.commit()
