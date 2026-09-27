@@ -156,6 +156,7 @@ def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentI
     )
 
 @router.post("", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)
+@legacy_router.post("", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)
 def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
     incident_id = incident_in.id
     if incident_id:
@@ -201,6 +202,7 @@ def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
     return incident
 
 @router.get("", response_model=List[IncidentResponse])
+@legacy_router.get("", response_model=List[IncidentResponse])
 def get_incidents(
     service: Optional[str] = Query(None, description="Filter by service name"),
     severity: Optional[str] = Query(None, description="Filter by severity"),
@@ -218,6 +220,7 @@ def get_incidents(
     return query.order_by(Incident.created_at.desc()).all()
 
 @router.post("/recall")
+@legacy_router.post("/recall")
 def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = Depends(get_db)):
     search_parts = []
     if query_in.query:
@@ -270,6 +273,7 @@ def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = Depends(
     }
 
 @router.post("/reflect")
+@legacy_router.post("/reflect")
 def reflect_incident_patterns(query_in: MemoryReflectQuery, db: Session = Depends(get_db)):
     result = hindsight_service.reflect_patterns(
         query=query_in.query,
@@ -278,6 +282,7 @@ def reflect_incident_patterns(query_in: MemoryReflectQuery, db: Session = Depend
     return result
 
 @router.post("/analyze", response_model=IncidentAnalysisResponse)
+@legacy_router.post("/analyze", response_model=IncidentAnalysisResponse)
 def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
     return ai_incident_service.analyze_incident(
         service=analysis_in.service,
@@ -304,6 +309,7 @@ def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
     return perform_investigation_workflow(incident, db)
 
 @router.get("/{incident_id}", response_model=IncidentResponse)
+@legacy_router.get("/{incident_id}", response_model=IncidentResponse)
 def get_incident(incident_id: str, db: Session = Depends(get_db)):
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
@@ -314,6 +320,7 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
     return incident
 
 @router.patch("/{incident_id}", response_model=IncidentResponse)
+@legacy_router.patch("/{incident_id}", response_model=IncidentResponse)
 def update_incident(
     incident_id: str,
     incident_in: IncidentUpdate,
