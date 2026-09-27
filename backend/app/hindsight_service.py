@@ -155,7 +155,7 @@ class HindsightService:
                 "results": None,
             }
 
-    # Backward-compatibility sync aliases for non-async contexts (e.g. initial startup seeding)
+    # Backward-compatibility sync aliases for non-async contexts
     def retain_incident(self, *args, **kwargs) -> Dict[str, Any]:
         try:
             import asyncio
