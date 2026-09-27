@@ -1,9 +1,21 @@
 import logging
 from typing import Any, Dict, List, Optional
 from hindsight_client import Hindsight
+from hindsight_client_api.exceptions import ApiException
 from app.config import settings
 
 logger = logging.getLogger("incidentiq.hindsight")
+
+def is_insufficient_credits_error(e: Exception) -> bool:
+    """Check if exception represents HTTP 402 Insufficient Credits."""
+    if isinstance(e, ApiException):
+        if getattr(e, "status", None) == 402:
+            return True
+        err_str = str(e).lower()
+        if "402" in err_str or "insufficient credits" in err_str:
+            return True
+    err_str = str(e).lower()
+    return "402" in err_str or "insufficient credits" in err_str
 
 class HindsightService:
     def __init__(
@@ -62,8 +74,8 @@ class HindsightService:
             "outcome": outcome,
         }
 
+        client = self.get_client()
         try:
-            client = self.get_client()
             response = await client.aretain(
                 bank_id=self.bank_id,
                 content=content_text,
@@ -80,12 +92,23 @@ class HindsightService:
             }
         except Exception as e:
             logger.warning(f"Failed to retain incident {incident_id} in Hindsight: {e}")
+            if is_insufficient_credits_error(e):
+                return {
+                    "success": False,
+                    "incident_id": incident_id,
+                    "bank_id": self.bank_id,
+                    "error": "Hindsight Cloud has insufficient credits. Historical memory is temporarily unavailable.",
+                    "status_code": 402,
+                }
             return {
                 "success": False,
                 "incident_id": incident_id,
                 "bank_id": self.bank_id,
                 "error": str(e),
             }
+        finally:
+            if self._client is None:
+                await client.aclose()
 
     async def arecall_memories(
         self,
@@ -97,8 +120,8 @@ class HindsightService:
         """
         RECALL (Async): Retrieve similar historical incidents/memories from Hindsight based on an incident query.
         """
+        client = self.get_client()
         try:
-            client = self.get_client()
             response = await client.arecall(
                 bank_id=self.bank_id,
                 query=query,
@@ -114,6 +137,15 @@ class HindsightService:
             }
         except Exception as e:
             logger.warning(f"Failed to recall memories from Hindsight: {e}")
+            if is_insufficient_credits_error(e):
+                return {
+                    "success": False,
+                    "query": query,
+                    "bank_id": self.bank_id,
+                    "error": "Hindsight Cloud has insufficient credits. Historical memory is temporarily unavailable.",
+                    "status_code": 402,
+                    "results": None,
+                }
             return {
                 "success": False,
                 "query": query,
@@ -121,6 +153,9 @@ class HindsightService:
                 "error": str(e),
                 "results": None,
             }
+        finally:
+            if self._client is None:
+                await client.aclose()
 
     async def areflect_patterns(
         self,
@@ -131,8 +166,8 @@ class HindsightService:
         """
         REFLECT (Async): Synthesize overall patterns, recurring issues, or cross-incident takeaways from Hindsight.
         """
+        client = self.get_client()
         try:
-            client = self.get_client()
             response = await client.areflect(
                 bank_id=self.bank_id,
                 query=query,
@@ -147,6 +182,15 @@ class HindsightService:
             }
         except Exception as e:
             logger.warning(f"Failed to reflect patterns from Hindsight: {e}")
+            if is_insufficient_credits_error(e):
+                return {
+                    "success": False,
+                    "query": query,
+                    "bank_id": self.bank_id,
+                    "error": "Hindsight Cloud has insufficient credits. Historical memory is temporarily unavailable.",
+                    "status_code": 402,
+                    "results": None,
+                }
             return {
                 "success": False,
                 "query": query,
@@ -154,6 +198,9 @@ class HindsightService:
                 "error": str(e),
                 "results": None,
             }
+        finally:
+            if self._client is None:
+                await client.aclose()
 
     # Backward-compatibility sync aliases for non-async contexts
     def retain_incident(self, *args, **kwargs) -> Dict[str, Any]:

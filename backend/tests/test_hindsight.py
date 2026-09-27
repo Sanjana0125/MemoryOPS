@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 import pytest
+from hindsight_client_api.exceptions import ApiException
 from app.main import app
 from app.hindsight_service import HindsightService
 
@@ -62,6 +63,20 @@ async def test_hindsight_service_areflect():
     res = await service.areflect_patterns(query="What causes database timeouts?")
     assert res["success"] is True
     assert res["results"] == {"reflection": "Common pattern is connection pool exhaustion."}
+
+@pytest.mark.anyio
+async def test_hindsight_service_http_402_insufficient_credits():
+    mock_client = AsyncMock()
+    mock_exception = ApiException(status=402, reason="Payment Required", body='{"detail": "Insufficient credits"}')
+    mock_client.arecall.side_effect = mock_exception
+
+    service = HindsightService(base_url="http://localhost:8888", bank_id="testbank")
+    service._client = mock_client
+
+    res = await service.arecall_memories(query="Database timeout")
+    assert res["success"] is False
+    assert res["status_code"] == 402
+    assert "insufficient credits" in res["error"].lower()
 
 def test_recall_api_endpoint():
     with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall:
