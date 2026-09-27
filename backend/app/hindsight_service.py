@@ -17,11 +17,14 @@ class HindsightService:
         self.bank_id = bank_id or settings.HINDSIGHT_BANK_ID
         self._client: Optional[Hindsight] = None
 
+    def get_client(self) -> Hindsight:
+        if self._client is not None:
+            return self._client
+        return Hindsight(base_url=self.base_url, api_key=self.api_key)
+
     @property
     def client(self) -> Hindsight:
-        if self._client is None:
-            self._client = Hindsight(base_url=self.base_url, api_key=self.api_key)
-        return self._client
+        return self.get_client()
 
     async def aretain_incident(
         self,
@@ -60,7 +63,8 @@ class HindsightService:
         }
 
         try:
-            response = await self.client.aretain(
+            client = self.get_client()
+            response = await client.aretain(
                 bank_id=self.bank_id,
                 content=content_text,
                 metadata=metadata,
@@ -94,7 +98,8 @@ class HindsightService:
         RECALL (Async): Retrieve similar historical incidents/memories from Hindsight based on an incident query.
         """
         try:
-            response = await self.client.arecall(
+            client = self.get_client()
+            response = await client.arecall(
                 bank_id=self.bank_id,
                 query=query,
                 budget=budget,
@@ -127,7 +132,8 @@ class HindsightService:
         REFLECT (Async): Synthesize overall patterns, recurring issues, or cross-incident takeaways from Hindsight.
         """
         try:
-            response = await self.client.areflect(
+            client = self.get_client()
+            response = await client.areflect(
                 bank_id=self.bank_id,
                 query=query,
                 budget=budget,
@@ -151,21 +157,7 @@ class HindsightService:
 
     # Backward-compatibility sync aliases for non-async contexts (e.g. initial startup seeding)
     def retain_incident(self, *args, **kwargs) -> Dict[str, Any]:
-        content_lines = [
-            f"Incident ID: {kwargs.get('incident_id', '')}",
-            f"Service: {kwargs.get('service', '')}",
-            f"Error: {kwargs.get('error', '')}",
-            f"Symptoms: {kwargs.get('symptoms', '')}",
-            f"Severity: {kwargs.get('severity', '')}",
-            f"Outcome: {kwargs.get('outcome', 'Resolved')}",
-        ]
-        if kwargs.get("root_cause"):
-            content_lines.append(f"Root Cause: {kwargs.get('root_cause')}")
-        if kwargs.get("resolution"):
-            content_lines.append(f"Resolution: {kwargs.get('resolution')}")
-
         try:
-            # When called in sync, gracefully attempt or catch if no loop
             import asyncio
             try:
                 loop = asyncio.get_running_loop()
@@ -173,7 +165,6 @@ class HindsightService:
                 loop = None
 
             if loop and loop.is_running():
-                # Schedule task on existing event loop
                 loop.create_task(self.aretain_incident(*args, **kwargs))
                 return {"success": True, "status": "scheduled"}
             else:
