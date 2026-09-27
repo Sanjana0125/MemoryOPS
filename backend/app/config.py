@@ -1,8 +1,19 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Automatically load .env file if present in BASE_DIR or backend directory
+env_path = BASE_DIR / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    backend_env = BASE_DIR / "backend" / ".env"
+    if backend_env.exists():
+        load_dotenv(dotenv_path=backend_env)
+
 DEFAULT_DB_PATH = BASE_DIR / "data" / "incidentiq.db"
 
 def get_cors_origins() -> list[str]:
