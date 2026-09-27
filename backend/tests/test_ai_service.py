@@ -109,7 +109,10 @@ def test_analyze_new_incident_api_endpoint():
         assert data["probable_root_cause"] == "Third party payment provider gateway offline"
 
 def test_analyze_existing_incident_api_endpoint():
-    with patch("app.routers.incidents.ai_incident_service.analyze_incident") as mock_analyze:
+    with patch("app.routers.incidents.hindsight_service.recall_memories") as mock_recall, \
+         patch("app.routers.incidents.ai_incident_service.analyze_incident") as mock_analyze:
+
+        mock_recall.return_value = {"success": True, "results": []}
         mock_analyze.return_value = {
             "success": True,
             "service": "Payment API",
@@ -124,5 +127,5 @@ def test_analyze_existing_incident_api_endpoint():
         response = client.post("/api/v1/incidents/INC-101/analyze")
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] is True
-        assert data["probable_root_cause"] == "Database connection pool exhaustion"
+        assert data["current_incident"]["id"] == "INC-101"
+        assert data["recommended_action"] == "Increase connection pool size"

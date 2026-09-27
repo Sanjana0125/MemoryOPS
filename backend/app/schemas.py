@@ -1,4 +1,4 @@
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 
@@ -64,3 +64,12 @@ class IncidentAnalysisResponse(BaseModel):
     supporting_historical_incidents: List[str]
     recalled_memories_used: Optional[Any] = None
     error_detail: Optional[str] = None
+
+class IncidentInvestigationResponse(BaseModel):
+    current_incident: IncidentResponse
+    similar_historical_incidents: List[Dict[str, Any]]
+    previous_root_causes: List[str]
+    previous_resolutions: List[str]
+    ai_analysis: Dict[str, Any]
+    recommended_action: str
+    explanation: str

@@ -30,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(incidents.router)
+app.include_router(incidents.legacy_router)
 
 class HealthResponse(BaseModel):
     status: str

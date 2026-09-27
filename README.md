@@ -28,45 +28,56 @@ IncidentIQ is an AI-powered incident response assistant for DevOps and SRE engin
 └── README.md         # Project documentation
 ```
 
-## Groq AI Incident Analysis
+## Complete Investigation & Resolution Workflow
 
-IncidentIQ uses **Groq** (with models such as `llama-3.3-70b-versatile`) to perform automated AI root-cause analysis and remediation recommendations.
+IncidentIQ connects incidents, Hindsight memory recall/retention, and Groq AI into an integrated investigation loop:
 
-### Workflow
+```
+[Incident Created]
+       │
+       ▼
+[POST /api/incidents/{incident_id}/analyze]
+       │
+       ├─► 1. Fetch current incident details from SQLite DB
+       ├─► 2. Execute Hindsight RECALL to search similar past memories
+       ├─► 3. Extract previous root causes and previous resolutions
+       ├─► 4. Query Groq LLM with incident context + recalled memories
+       └─► 5. Return structured response:
+               - current_incident
+               - similar_historical_incidents
+               - previous_root_causes
+               - previous_resolutions
+               - ai_analysis
+               - recommended_action
+               - explanation
 
-1. **Incident Context Retrieval**:
-   - For a given incident (new or existing), relevant historical incidents are retrieved from Hindsight persistent memory (`RECALL`).
-2. **AI Analysis Generation**:
-   - The current incident details alongside recalled historical memories are sent to Groq.
-   - Guardrails instruct the AI never to fabricate historical incidents and strictly distinguish historical evidence from model reasoning.
-3. **Structured Output**:
-   - The analysis endpoint returns a JSON response containing:
-     - `probable_root_cause`
-     - `recommended_action`
-     - `confidence` ("high" | "medium" | "low")
-     - `reasoning`
-     - `supporting_historical_incidents`
+[Incident Resolved via POST /api/incidents/{incident_id}/resolve]
+       │
+       └─► Execute Hindsight RETAIN to store the resolution experience into memory
+           so future incidents can recall and learn from it.
+```
 
-### Analysis Endpoints
+### Key API Endpoints
 
-- `POST /api/v1/incidents/analyze`: Analyze an uncommitted / new incident.
-- `POST /api/v1/incidents/{incident_id}/analyze`: Analyze an existing incident from the database.
+- `POST /api/incidents/{incident_id}/analyze` (or `POST /api/v1/incidents/{incident_id}/analyze`):
+  Executes the full investigation workflow combining DB incident details, Hindsight RECALL, and Groq AI analysis.
+- `POST /api/incidents/{incident_id}/resolve` (or `POST /api/v1/incidents/{incident_id}/resolve`):
+  Resolves an incident with `root_cause` and `resolution`, then triggers Hindsight RETAIN.
+- `POST /api/v1/incidents/recall`:
+  Query Hindsight memory directly for similar past incidents.
+- `POST /api/v1/incidents/reflect`:
+  Synthesize cross-incident patterns in Hindsight.
 
 ## Hindsight Integration
 
-IncidentIQ uses **Hindsight** as its central persistent memory engine to store, retrieve, and synthesize incident investigation experiences.
-
-### Key Operations
+IncidentIQ uses **Hindsight** as its central persistent memory engine:
 
 1. **RETAIN (`hindsight_service.retain_incident`)**:
-   - Stores resolved incidents and their resolution details (service, error, symptoms, severity, root cause, resolution) into Hindsight banks.
-   - Automatically triggered when incidents are created as resolved, updated to resolved, resolved via `POST /api/v1/incidents/{id}/resolve`, or seeded on startup (including `INC-101`).
-
-2. **RECALL (`POST /api/v1/incidents/recall`)**:
-   - Retrieves relevant historical incidents and memories from Hindsight based on new incident symptoms or query parameters.
-
-3. **REFLECT (`POST /api/v1/incidents/reflect`)**:
-   - Synthesizes higher-level patterns, recurring root causes, or architectural vulnerabilities across multiple historical incident memories in Hindsight.
+   Stores resolved incidents and investigation experiences into Hindsight memory banks.
+2. **RECALL (`hindsight_service.recall_memories`)**:
+   Retrieves relevant historical memories for a new incident or query.
+3. **REFLECT (`hindsight_service.reflect_patterns`)**:
+   Synthesizes higher-level patterns across multiple memories.
 
 ### Configuration
 

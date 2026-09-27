@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -15,11 +15,76 @@ from app.schemas import (
     MemoryReflectQuery,
     IncidentAnalysisRequest,
     IncidentAnalysisResponse,
+    IncidentInvestigationResponse,
 )
 from app.hindsight_service import hindsight_service
 from app.ai_service import ai_incident_service
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["Incidents"])
+legacy_router = APIRouter(prefix="/api/incidents", tags=["Incidents (Legacy Route)"])
+
+def perform_investigation_workflow(incident: Incident) -> IncidentInvestigationResponse:
+    # 1. Hindsight RECALL
+    recall_query = f"Service: {incident.service} | Error: {incident.error} | Symptoms: {incident.symptoms}"
+    recalled = hindsight_service.recall_memories(query=recall_query)
+
+    similar_incidents: List[Dict[str, Any]] = []
+    previous_root_causes: List[str] = []
+    previous_resolutions: List[str] = []
+
+    if recalled.get("success") and recalled.get("results"):
+        results = recalled["results"]
+        items = []
+        if isinstance(results, dict):
+            items = results.get("results", []) or results.get("memories", [])
+        elif isinstance(results, list):
+            items = results
+        elif hasattr(results, "results"):
+            items = getattr(results, "results") or []
+
+        for item in items:
+            item_dict = item if isinstance(item, dict) else (item.__dict__ if hasattr(item, "__dict__") else {"text": str(item)})
+            similar_incidents.append(item_dict)
+
+            text_str = str(item_dict)
+            if "Root Cause:" in text_str:
+                rc_part = text_str.split("Root Cause:")[1]
+                rc = rc_part.split("\\n")[0].split("\n")[0].split("Resolution:")[0].strip(" '\"}\\",)
+                if rc and rc not in previous_root_causes:
+                    previous_root_causes.append(rc)
+            if "Resolution:" in text_str:
+                res_part = text_str.split("Resolution:")[1]
+                res = res_part.split("\\n")[0].split("\n")[0].strip(" '\"}\\",)
+                if res and res not in previous_resolutions:
+                    previous_resolutions.append(res)
+
+    # 2. Groq Analysis
+    ai_res = ai_incident_service.analyze_incident(
+        service=incident.service,
+        error=incident.error,
+        symptoms=incident.symptoms,
+        severity=incident.severity,
+    )
+
+    recommended_action = ai_res.get("recommended_action", "Investigate service logs and system metrics.")
+    explanation = ai_res.get("reasoning", "Analysis based on current symptoms and historical incident recall.")
+
+    ai_analysis_summary = {
+        "probable_root_cause": ai_res.get("probable_root_cause"),
+        "confidence": ai_res.get("confidence"),
+        "reasoning": ai_res.get("reasoning"),
+        "supporting_historical_incidents": ai_res.get("supporting_historical_incidents", []),
+    }
+
+    return IncidentInvestigationResponse(
+        current_incident=IncidentResponse.model_validate(incident),
+        similar_historical_incidents=similar_incidents,
+        previous_root_causes=previous_root_causes,
+        previous_resolutions=previous_resolutions,
+        ai_analysis=ai_analysis_summary,
+        recommended_action=recommended_action,
+        explanation=explanation,
+    )
 
 @router.post("", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)
 def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
@@ -85,9 +150,6 @@ def get_incidents(
 
 @router.post("/recall")
 def recall_similar_incidents(query_in: MemoryRecallQuery):
-    """
-    RECALL: Retrieve similar historical incidents/memories from Hindsight for a new incident or query.
-    """
     search_parts = []
     if query_in.query:
         search_parts.append(query_in.query)
@@ -108,9 +170,6 @@ def recall_similar_incidents(query_in: MemoryRecallQuery):
 
 @router.post("/reflect")
 def reflect_incident_patterns(query_in: MemoryReflectQuery):
-    """
-    REFLECT: Synthesize overall patterns and insights across multiple incident memories in Hindsight.
-    """
     result = hindsight_service.reflect_patterns(
         query=query_in.query,
         context=query_in.context,
@@ -119,10 +178,6 @@ def reflect_incident_patterns(query_in: MemoryReflectQuery):
 
 @router.post("/analyze", response_model=IncidentAnalysisResponse)
 def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
-    """
-    AI Incident Analysis: Uses Hindsight memory recall + Groq LLM to predict root cause,
-    recommend actions, confidence score, and supporting historical incidents.
-    """
     return ai_incident_service.analyze_incident(
         service=analysis_in.service,
         error=analysis_in.error,
@@ -131,10 +186,12 @@ def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
         custom_query=analysis_in.custom_query,
     )
 
-@router.post("/{incident_id}/analyze", response_model=IncidentAnalysisResponse)
+@router.post("/{incident_id}/analyze", response_model=IncidentInvestigationResponse)
+@legacy_router.post("/{incident_id}/analyze", response_model=IncidentInvestigationResponse)
 def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
     """
-    AI Incident Analysis for an existing incident by ID.
+    POST /api/incidents/{incident_id}/analyze & POST /api/v1/incidents/{incident_id}/analyze
+    Connects Incident -> Hindsight RECALL -> Groq -> Recommendations
     """
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
@@ -143,12 +200,7 @@ def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
             detail=f"Incident '{incident_id}' not found."
         )
 
-    return ai_incident_service.analyze_incident(
-        service=incident.service,
-        error=incident.error,
-        symptoms=incident.symptoms,
-        severity=incident.severity,
-    )
+    return perform_investigation_workflow(incident)
 
 @router.get("/{incident_id}", response_model=IncidentResponse)
 def get_incident(incident_id: str, db: Session = Depends(get_db)):
@@ -199,6 +251,7 @@ def update_incident(
     return incident
 
 @router.post("/{incident_id}/resolve", response_model=IncidentResponse)
+@legacy_router.post("/{incident_id}/resolve", response_model=IncidentResponse)
 def resolve_incident(
     incident_id: str,
     resolve_in: IncidentResolve,
