@@ -18,5 +18,7 @@ class Settings(BaseModel):
     HINDSIGHT_API_URL: str = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
     HINDSIGHT_API_KEY: str | None = os.getenv("HINDSIGHT_API_KEY", None)
     HINDSIGHT_BANK_ID: str = os.getenv("HINDSIGHT_BANK_ID", "incidentiq")
+    GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY", None)
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 settings = Settings()

@@ -45,3 +45,22 @@ class MemoryRecallQuery(BaseModel):
 class MemoryReflectQuery(BaseModel):
     query: str = Field(..., min_length=1, description="Query to reflect upon across historical incidents")
     context: Optional[str] = Field(default=None, description="Optional context for reflection")
+
+class IncidentAnalysisRequest(BaseModel):
+    service: str = Field(..., min_length=1, description="Affected service name")
+    error: str = Field(..., min_length=1, description="Primary error message")
+    symptoms: str = Field(..., min_length=1, description="Observable symptoms")
+    severity: str = Field(default="medium", description="Severity level")
+    custom_query: Optional[str] = Field(default=None, description="Custom recall search query")
+
+class IncidentAnalysisResponse(BaseModel):
+    success: bool
+    service: str
+    error: str
+    probable_root_cause: str
+    recommended_action: str
+    confidence: str
+    reasoning: str
+    supporting_historical_incidents: List[str]
+    recalled_memories_used: Optional[Any] = None
+    error_detail: Optional[str] = None

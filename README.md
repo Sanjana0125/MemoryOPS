@@ -8,7 +8,7 @@ IncidentIQ is an AI-powered incident response assistant for DevOps and SRE engin
 - **Backend**: FastAPI (Python), Uvicorn, SQLAlchemy
 - **Database**: SQLite (stored in `data/incidentiq.db` or configured via env)
 - **Central Memory**: Hindsight (`hindsight-client` Python SDK)
-- **AI Provider**: Groq (Planned)
+- **AI Provider**: Groq LLM API (`groq` Python SDK)
 
 ## Directory Structure
 
@@ -16,6 +16,7 @@ IncidentIQ is an AI-powered incident response assistant for DevOps and SRE engin
 .
 ├── backend/          # FastAPI backend service
 │   ├── app/
+│   │   ├── ai_service.py        # Groq AI incident analysis service
 │   │   ├── hindsight_service.py # Hindsight memory service (RETAIN, RECALL, REFLECT)
 │   │   ├── routers/             # API route handlers
 │   │   └── seed.py              # Initial seed data including INC-101
@@ -26,6 +27,30 @@ IncidentIQ is an AI-powered incident response assistant for DevOps and SRE engin
 ├── AGENTS.md         # Instructions and guidance for AI agents
 └── README.md         # Project documentation
 ```
+
+## Groq AI Incident Analysis
+
+IncidentIQ uses **Groq** (with models such as `llama-3.3-70b-versatile`) to perform automated AI root-cause analysis and remediation recommendations.
+
+### Workflow
+
+1. **Incident Context Retrieval**:
+   - For a given incident (new or existing), relevant historical incidents are retrieved from Hindsight persistent memory (`RECALL`).
+2. **AI Analysis Generation**:
+   - The current incident details alongside recalled historical memories are sent to Groq.
+   - Guardrails instruct the AI never to fabricate historical incidents and strictly distinguish historical evidence from model reasoning.
+3. **Structured Output**:
+   - The analysis endpoint returns a JSON response containing:
+     - `probable_root_cause`
+     - `recommended_action`
+     - `confidence` ("high" | "medium" | "low")
+     - `reasoning`
+     - `supporting_historical_incidents`
+
+### Analysis Endpoints
+
+- `POST /api/v1/incidents/analyze`: Analyze an uncommitted / new incident.
+- `POST /api/v1/incidents/{incident_id}/analyze`: Analyze an existing incident from the database.
 
 ## Hindsight Integration
 
@@ -39,19 +64,23 @@ IncidentIQ uses **Hindsight** as its central persistent memory engine to store, 
 
 2. **RECALL (`POST /api/v1/incidents/recall`)**:
    - Retrieves relevant historical incidents and memories from Hindsight based on new incident symptoms or query parameters.
-   - Enables DevOps/SRE engineers to immediately discover how past similar outages were diagnosed and fixed.
 
 3. **REFLECT (`POST /api/v1/incidents/reflect`)**:
    - Synthesizes higher-level patterns, recurring root causes, or architectural vulnerabilities across multiple historical incident memories in Hindsight.
 
 ### Configuration
 
-Hindsight is configured via environment variables in `.env` (or `.env.example`):
+Environment variables in `.env` (or `.env.example`):
 
 ```bash
+# Hindsight
 HINDSIGHT_API_URL=http://localhost:8888
 HINDSIGHT_API_KEY=
 HINDSIGHT_BANK_ID=incidentiq
+
+# Groq AI
+GROQ_API_KEY=gsk_your_groq_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
 ## Getting Started

@@ -16,11 +16,18 @@ IncidentIQ is an AI-powered incident response assistant designed for DevOps/SRE 
 
 - **Backend**:
   - Located in `backend/`.
-  - Built with Python 3, FastAPI, SQLAlchemy, and `hindsight-client`.
-  - Service logic resides in `backend/app/hindsight_service.py`.
+  - Built with Python 3, FastAPI, SQLAlchemy, `hindsight-client`, and `groq`.
+  - AI Service logic resides in `backend/app/ai_service.py`.
+  - Memory Service logic resides in `backend/app/hindsight_service.py`.
   - Route handlers reside in `backend/app/routers/`.
   - Ensure database interactions use SQLAlchemy sessions cleanly.
-  - Run `pytest` to verify backend routes, database connections, and Hindsight service integrations.
+  - Run `pytest` to verify backend routes, database connections, and AI/memory integrations.
+
+- **Groq AI Integration**:
+  - `ai_incident_service.analyze_incident` handles root cause diagnosis and action recommendations.
+  - Triggered via `POST /api/v1/incidents/analyze` and `POST /api/v1/incidents/{id}/analyze`.
+  - Prompt instructions strictly prohibit fabricating historical incidents or IDs and enforce distinguishing historical evidence from LLM reasoning.
+  - Configure via `GROQ_API_KEY` and `GROQ_MODEL`.
 
 - **Hindsight Integration**:
   - Hindsight is used for central persistent memory operations (`RETAIN`, `RECALL`, `REFLECT`).

@@ -13,8 +13,11 @@ from app.schemas import (
     IncidentResponse,
     MemoryRecallQuery,
     MemoryReflectQuery,
+    IncidentAnalysisRequest,
+    IncidentAnalysisResponse,
 )
 from app.hindsight_service import hindsight_service
+from app.ai_service import ai_incident_service
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["Incidents"])
 
@@ -49,7 +52,6 @@ def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(incident)
 
-    # RETAIN if incident is created as resolved
     if incident.outcome.lower() == "resolved":
         hindsight_service.retain_incident(
             incident_id=incident.id,
@@ -115,6 +117,39 @@ def reflect_incident_patterns(query_in: MemoryReflectQuery):
     )
     return result
 
+@router.post("/analyze", response_model=IncidentAnalysisResponse)
+def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
+    """
+    AI Incident Analysis: Uses Hindsight memory recall + Groq LLM to predict root cause,
+    recommend actions, confidence score, and supporting historical incidents.
+    """
+    return ai_incident_service.analyze_incident(
+        service=analysis_in.service,
+        error=analysis_in.error,
+        symptoms=analysis_in.symptoms,
+        severity=analysis_in.severity,
+        custom_query=analysis_in.custom_query,
+    )
+
+@router.post("/{incident_id}/analyze", response_model=IncidentAnalysisResponse)
+def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
+    """
+    AI Incident Analysis for an existing incident by ID.
+    """
+    incident = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not incident:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Incident '{incident_id}' not found."
+        )
+
+    return ai_incident_service.analyze_incident(
+        service=incident.service,
+        error=incident.error,
+        symptoms=incident.symptoms,
+        severity=incident.severity,
+    )
+
 @router.get("/{incident_id}", response_model=IncidentResponse)
 def get_incident(incident_id: str, db: Session = Depends(get_db)):
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
@@ -149,7 +184,6 @@ def update_incident(
     db.commit()
     db.refresh(incident)
 
-    # RETAIN when updated to resolved
     if incident.outcome.lower() == "resolved":
         hindsight_service.retain_incident(
             incident_id=incident.id,
@@ -186,7 +220,6 @@ def resolve_incident(
     db.commit()
     db.refresh(incident)
 
-    # RETAIN in Hindsight upon resolution
     hindsight_service.retain_incident(
         incident_id=incident.id,
         service=incident.service,
