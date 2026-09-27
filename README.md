@@ -1,4 +1,4 @@
-# MEMORYOPS
+# MemoryOps
 
 > **AI Incident Response That Learns From Every Production Incident**
 
