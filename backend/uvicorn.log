@@ -1,0 +1,11 @@
+INFO:     Started server process [615256]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Failed to recall memories from Hindsight: (401)
+Reason: Unauthorized
+HTTP response headers: <CIMultiDictProxy('Date': 'Sun, 27 Sep 2026 17:12:15 GMT', 'Content-Type': 'application/json', 'Content-Length': '52', 'strict-transport-security': 'max-age=31536000; includeSubDomains', 'Via': '1.1 google', 'Alt-Svc': 'h3=":443"; ma=2592000')>
+HTTP response body: {"detail":"Authentication failed: API key required"}
+
+Groq API configuration error: GROQ_API_KEY environment variable is not configured.
+INFO:     127.0.0.1:39746 - "POST /api/v1/incidents/INC-101/analyze HTTP/1.1" 200 OK
