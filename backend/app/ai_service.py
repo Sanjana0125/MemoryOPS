@@ -40,21 +40,24 @@ class AIIncidentService:
             self._client = Groq(api_key=self.api_key)
         return self._client
 
-    def analyze_incident(
+    async def aanalyze_incident(
         self,
         service: str,
         error: str,
         symptoms: str,
         severity: str = "medium",
         custom_query: Optional[str] = None,
+        recalled_memories: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        1. Recalls similar historical incidents from Hindsight.
+        Async version of incident analysis.
+        1. Recalls similar historical incidents from Hindsight asynchronously (if not passed).
         2. Sends current incident details and recalled memories to Groq LLM.
         3. Returns structured analysis.
         """
-        recall_query = custom_query or f"Service: {service} | Error: {error} | Symptoms: {symptoms}"
-        recalled_memories = hindsight_service.recall_memories(query=recall_query)
+        if recalled_memories is None:
+            recall_query = custom_query or f"Service: {service} | Error: {error} | Symptoms: {symptoms}"
+            recalled_memories = await hindsight_service.arecall_memories(query=recall_query)
 
         memories_text = "No historical memories retrieved."
         if recalled_memories.get("success") and recalled_memories.get("results"):
@@ -118,6 +121,72 @@ Analyze the current incident now and respond strictly with the JSON schema reque
                 service, error, symptoms, severity, recalled_memories,
                 error_msg=f"Groq AI service error: {e}"
             )
+
+    def analyze_incident(
+        self,
+        service: str,
+        error: str,
+        symptoms: str,
+        severity: str = "medium",
+        custom_query: Optional[str] = None,
+        recalled_memories: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Sync wrapper for analyze_incident.
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # If in running loop and recalled_memories is provided, run prompt directly without loop call
+            if recalled_memories is not None:
+                memories_text = "No historical memories retrieved."
+                if recalled_memories.get("success") and recalled_memories.get("results"):
+                    memories_text = str(recalled_memories["results"])
+
+                user_prompt = f"""--- CURRENT INCIDENT DETAILS ---
+Service: {service}
+Error: {error}
+Symptoms: {symptoms}
+Severity: {severity}
+
+--- RECALLED HISTORICAL MEMORIES (FROM HINDSIGHT) ---
+{memories_text}
+
+Analyze the current incident now and respond strictly with the JSON schema requested.
+"""
+                try:
+                    client = self.client
+                    completion = client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.2,
+                    )
+                    parsed = json.loads(completion.choices[0].message.content)
+                    return {
+                        "success": True,
+                        "service": service,
+                        "error": error,
+                        "probable_root_cause": parsed.get("probable_root_cause", "Unknown root cause"),
+                        "recommended_action": parsed.get("recommended_action", "Investigate service logs"),
+                        "confidence": parsed.get("confidence", "medium"),
+                        "reasoning": parsed.get("reasoning", "Analysis generated from incident details"),
+                        "supporting_historical_incidents": parsed.get("supporting_historical_incidents", []),
+                        "recalled_memories_used": recalled_memories,
+                    }
+                except Exception as e:
+                    return self._fallback_analysis(service, error, symptoms, severity, recalled_memories, str(e))
+            else:
+                return self._fallback_analysis(service, error, symptoms, severity, {}, "Sync analyze called inside running loop without recalled memories")
+        else:
+            return asyncio.run(self.aanalyze_incident(service, error, symptoms, severity, custom_query, recalled_memories))
 
     def _fallback_analysis(
         self,

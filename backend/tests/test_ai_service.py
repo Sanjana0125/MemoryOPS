@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
 from app.ai_service import AIIncidentService
@@ -85,7 +85,7 @@ def test_ai_service_json_parse_error_fallback():
         assert "failed to parse" in res["error_detail"].lower()
 
 def test_analyze_new_incident_api_endpoint():
-    with patch("app.routers.incidents.ai_incident_service.analyze_incident") as mock_analyze:
+    with patch("app.routers.incidents.ai_incident_service.aanalyze_incident") as mock_analyze:
         mock_analyze.return_value = {
             "success": True,
             "service": "Checkout Service",
@@ -109,8 +109,8 @@ def test_analyze_new_incident_api_endpoint():
         assert data["probable_root_cause"] == "Third party payment provider gateway offline"
 
 def test_analyze_existing_incident_api_endpoint():
-    with patch("app.routers.incidents.hindsight_service.recall_memories") as mock_recall, \
-         patch("app.routers.incidents.ai_incident_service.analyze_incident") as mock_analyze:
+    with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall, \
+         patch("app.routers.incidents.ai_incident_service.aanalyze_incident") as mock_analyze:
 
         mock_recall.return_value = {"success": True, "results": []}
         mock_analyze.return_value = {

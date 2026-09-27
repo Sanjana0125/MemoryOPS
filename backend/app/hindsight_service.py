@@ -23,7 +23,7 @@ class HindsightService:
             self._client = Hindsight(base_url=self.base_url, api_key=self.api_key)
         return self._client
 
-    def retain_incident(
+    async def aretain_incident(
         self,
         incident_id: str,
         service: str,
@@ -35,7 +35,7 @@ class HindsightService:
         outcome: str = "Resolved",
     ) -> Dict[str, Any]:
         """
-        RETAIN: Store a resolved incident and its investigation experience into Hindsight memory.
+        RETAIN (Async): Store a resolved incident and its investigation experience into Hindsight memory.
         """
         content_lines = [
             f"Incident ID: {incident_id}",
@@ -60,7 +60,7 @@ class HindsightService:
         }
 
         try:
-            response = self.client.retain(
+            response = await self.client.aretain(
                 bank_id=self.bank_id,
                 content=content_text,
                 metadata=metadata,
@@ -83,7 +83,7 @@ class HindsightService:
                 "error": str(e),
             }
 
-    def recall_memories(
+    async def arecall_memories(
         self,
         query: str,
         budget: str = "mid",
@@ -91,10 +91,10 @@ class HindsightService:
         tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        RECALL: Retrieve similar historical incidents/memories from Hindsight based on an incident query.
+        RECALL (Async): Retrieve similar historical incidents/memories from Hindsight based on an incident query.
         """
         try:
-            response = self.client.recall(
+            response = await self.client.arecall(
                 bank_id=self.bank_id,
                 query=query,
                 budget=budget,
@@ -117,17 +117,17 @@ class HindsightService:
                 "results": None,
             }
 
-    def reflect_patterns(
+    async def areflect_patterns(
         self,
         query: str,
         budget: str = "low",
         context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        REFLECT: Synthesize overall patterns, recurring issues, or cross-incident takeaways from Hindsight.
+        REFLECT (Async): Synthesize overall patterns, recurring issues, or cross-incident takeaways from Hindsight.
         """
         try:
-            response = self.client.reflect(
+            response = await self.client.areflect(
                 bank_id=self.bank_id,
                 query=query,
                 budget=budget,
@@ -148,5 +148,64 @@ class HindsightService:
                 "error": str(e),
                 "results": None,
             }
+
+    # Backward-compatibility sync aliases for non-async contexts (e.g. initial startup seeding)
+    def retain_incident(self, *args, **kwargs) -> Dict[str, Any]:
+        content_lines = [
+            f"Incident ID: {kwargs.get('incident_id', '')}",
+            f"Service: {kwargs.get('service', '')}",
+            f"Error: {kwargs.get('error', '')}",
+            f"Symptoms: {kwargs.get('symptoms', '')}",
+            f"Severity: {kwargs.get('severity', '')}",
+            f"Outcome: {kwargs.get('outcome', 'Resolved')}",
+        ]
+        if kwargs.get("root_cause"):
+            content_lines.append(f"Root Cause: {kwargs.get('root_cause')}")
+        if kwargs.get("resolution"):
+            content_lines.append(f"Resolution: {kwargs.get('resolution')}")
+
+        try:
+            # When called in sync, gracefully attempt or catch if no loop
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                # Schedule task on existing event loop
+                loop.create_task(self.aretain_incident(*args, **kwargs))
+                return {"success": True, "status": "scheduled"}
+            else:
+                return asyncio.run(self.aretain_incident(*args, **kwargs))
+        except Exception as e:
+            logger.warning(f"Sync retain fallback exception: {e}")
+            return {"success": False, "error": str(e)}
+
+    def recall_memories(self, *args, **kwargs) -> Dict[str, Any]:
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            logger.warning("recall_memories called synchronously inside running event loop. Use arecall_memories instead.")
+            return {"success": False, "error": "Synchronous recall inside running loop. Use arecall_memories."}
+        else:
+            return asyncio.run(self.arecall_memories(*args, **kwargs))
+
+    def reflect_patterns(self, *args, **kwargs) -> Dict[str, Any]:
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            logger.warning("reflect_patterns called synchronously inside running event loop. Use areflect_patterns instead.")
+            return {"success": False, "error": "Synchronous reflect inside running loop. Use areflect_patterns."}
+        else:
+            return asyncio.run(self.areflect_patterns(*args, **kwargs))
 
 hindsight_service = HindsightService()

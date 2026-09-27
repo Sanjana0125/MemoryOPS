@@ -1,18 +1,20 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
+import pytest
 from app.main import app
 from app.hindsight_service import HindsightService
 
 client = TestClient(app)
 
-def test_hindsight_service_retain():
-    mock_client = MagicMock()
-    mock_client.retain.return_value = {"status": "ok", "id": "mem-123"}
+@pytest.mark.anyio
+async def test_hindsight_service_aretain():
+    mock_client = AsyncMock()
+    mock_client.aretain.return_value = {"status": "ok", "id": "mem-123"}
 
     service = HindsightService(base_url="http://localhost:8888", bank_id="testbank")
     service._client = mock_client
 
-    res = service.retain_incident(
+    res = await service.aretain_incident(
         incident_id="INC-101",
         service="Payment API",
         error="Database connection timeout",
@@ -25,22 +27,23 @@ def test_hindsight_service_retain():
 
     assert res["success"] is True
     assert res["incident_id"] == "INC-101"
-    mock_client.retain.assert_called_once()
-    kwargs = mock_client.retain.call_args.kwargs
+    mock_client.aretain.assert_called_once()
+    kwargs = mock_client.aretain.call_args.kwargs
     assert kwargs["bank_id"] == "testbank"
     assert "INC-101" in kwargs["content"]
 
-def test_hindsight_service_recall():
-    mock_client = MagicMock()
-    mock_client.recall.return_value = {"memories": [{"content": "INC-101 details"}]}
+@pytest.mark.anyio
+async def test_hindsight_service_arecall():
+    mock_client = AsyncMock()
+    mock_client.arecall.return_value = {"memories": [{"content": "INC-101 details"}]}
 
     service = HindsightService(base_url="http://localhost:8888", bank_id="testbank")
     service._client = mock_client
 
-    res = service.recall_memories(query="Database timeout")
+    res = await service.arecall_memories(query="Database timeout")
     assert res["success"] is True
     assert res["results"] == {"memories": [{"content": "INC-101 details"}]}
-    mock_client.recall.assert_called_once_with(
+    mock_client.arecall.assert_called_once_with(
         bank_id="testbank",
         query="Database timeout",
         budget="mid",
@@ -48,19 +51,20 @@ def test_hindsight_service_recall():
         tags=None
     )
 
-def test_hindsight_service_reflect():
-    mock_client = MagicMock()
-    mock_client.reflect.return_value = {"reflection": "Common pattern is connection pool exhaustion."}
+@pytest.mark.anyio
+async def test_hindsight_service_areflect():
+    mock_client = AsyncMock()
+    mock_client.areflect.return_value = {"reflection": "Common pattern is connection pool exhaustion."}
 
     service = HindsightService(base_url="http://localhost:8888", bank_id="testbank")
     service._client = mock_client
 
-    res = service.reflect_patterns(query="What causes database timeouts?")
+    res = await service.areflect_patterns(query="What causes database timeouts?")
     assert res["success"] is True
     assert res["results"] == {"reflection": "Common pattern is connection pool exhaustion."}
 
 def test_recall_api_endpoint():
-    with patch("app.routers.incidents.hindsight_service.recall_memories") as mock_recall:
+    with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall:
         mock_recall.return_value = {
             "success": True,
             "query": "Database connection timeout",
@@ -78,7 +82,7 @@ def test_recall_api_endpoint():
         assert data["results"]["memories"][0]["id"] == "INC-101"
 
 def test_reflect_api_endpoint():
-    with patch("app.routers.incidents.hindsight_service.reflect_patterns") as mock_reflect:
+    with patch("app.routers.incidents.hindsight_service.areflect_patterns") as mock_reflect:
         mock_reflect.return_value = {
             "success": True,
             "query": "Database connection patterns",

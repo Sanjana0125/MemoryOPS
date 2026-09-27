@@ -77,10 +77,10 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
     }
 
 
-def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentInvestigationResponse:
-    # 1. Hindsight RECALL
+async def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentInvestigationResponse:
+    # 1. Hindsight RECALL (Async)
     recall_query = f"Service: {incident.service} | Error: {incident.error} | Symptoms: {incident.symptoms}"
-    recalled = hindsight_service.recall_memories(query=recall_query)
+    recalled = await hindsight_service.arecall_memories(query=recall_query)
 
     similar_incidents: List[Dict[str, Any]] = []
     previous_root_causes: List[str] = []
@@ -127,12 +127,13 @@ def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentI
             if past.resolution and past.resolution not in previous_resolutions:
                 previous_resolutions.append(past.resolution)
 
-    # 2. Groq Analysis
-    ai_res = ai_incident_service.analyze_incident(
+    # 2. Groq Analysis (pass recalled memories)
+    ai_res = await ai_incident_service.aanalyze_incident(
         service=incident.service,
         error=incident.error,
         symptoms=incident.symptoms,
         severity=incident.severity,
+        recalled_memories=recalled,
     )
 
     recommended_action = ai_res.get("recommended_action", "Investigate service logs and system metrics.")
@@ -157,7 +158,7 @@ def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentI
 
 @router.post("", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)
 @legacy_router.post("", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)
-def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
+async def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
     incident_id = incident_in.id
     if incident_id:
         existing = db.query(Incident).filter(Incident.id == incident_id).first()
@@ -188,7 +189,7 @@ def create_incident(incident_in: IncidentCreate, db: Session = Depends(get_db)):
     db.refresh(incident)
 
     if incident.outcome.lower() == "resolved":
-        hindsight_service.retain_incident(
+        await hindsight_service.aretain_incident(
             incident_id=incident.id,
             service=incident.service,
             error=incident.error,
@@ -221,7 +222,7 @@ def get_incidents(
 
 @router.post("/recall")
 @legacy_router.post("/recall")
-def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = Depends(get_db)):
+async def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = Depends(get_db)):
     search_parts = []
     if query_in.query:
         search_parts.append(query_in.query)
@@ -234,7 +235,7 @@ def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = Depends(
 
     full_query = " | ".join(search_parts) if search_parts else "historical incidents"
 
-    result = hindsight_service.recall_memories(
+    result = await hindsight_service.arecall_memories(
         query=full_query,
         tags=query_in.tags,
     )
@@ -274,8 +275,8 @@ def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = Depends(
 
 @router.post("/reflect")
 @legacy_router.post("/reflect")
-def reflect_incident_patterns(query_in: MemoryReflectQuery, db: Session = Depends(get_db)):
-    result = hindsight_service.reflect_patterns(
+async def reflect_incident_patterns(query_in: MemoryReflectQuery, db: Session = Depends(get_db)):
+    result = await hindsight_service.areflect_patterns(
         query=query_in.query,
         context=query_in.context,
     )
@@ -283,8 +284,8 @@ def reflect_incident_patterns(query_in: MemoryReflectQuery, db: Session = Depend
 
 @router.post("/analyze", response_model=IncidentAnalysisResponse)
 @legacy_router.post("/analyze", response_model=IncidentAnalysisResponse)
-def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
-    return ai_incident_service.analyze_incident(
+async def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
+    return await ai_incident_service.aanalyze_incident(
         service=analysis_in.service,
         error=analysis_in.error,
         symptoms=analysis_in.symptoms,
@@ -294,7 +295,7 @@ def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
 
 @router.post("/{incident_id}/analyze", response_model=IncidentInvestigationResponse)
 @legacy_router.post("/{incident_id}/analyze", response_model=IncidentInvestigationResponse)
-def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
+async def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
     """
     POST /api/incidents/{incident_id}/analyze & POST /api/v1/incidents/{incident_id}/analyze
     Connects Incident -> Hindsight RECALL -> Groq -> Recommendations
@@ -306,7 +307,7 @@ def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
             detail=f"Incident '{incident_id}' not found."
         )
 
-    return perform_investigation_workflow(incident, db)
+    return await perform_investigation_workflow(incident, db)
 
 @router.get("/{incident_id}", response_model=IncidentResponse)
 @legacy_router.get("/{incident_id}", response_model=IncidentResponse)
@@ -321,7 +322,7 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/{incident_id}", response_model=IncidentResponse)
 @legacy_router.patch("/{incident_id}", response_model=IncidentResponse)
-def update_incident(
+async def update_incident(
     incident_id: str,
     incident_in: IncidentUpdate,
     db: Session = Depends(get_db),
@@ -337,7 +338,7 @@ def update_incident(
     for field, value in update_data.items():
         setattr(incident, field, value)
 
-    if "outcome" in update_data:
+    if "outcome" in update_data and update_data["outcome"]:
         if update_data["outcome"].lower() == "resolved" and not incident.resolved_at:
             incident.resolved_at = datetime.now(timezone.utc)
 
@@ -345,7 +346,7 @@ def update_incident(
     db.refresh(incident)
 
     if incident.outcome.lower() == "resolved":
-        hindsight_service.retain_incident(
+        await hindsight_service.aretain_incident(
             incident_id=incident.id,
             service=incident.service,
             error=incident.error,
@@ -360,7 +361,7 @@ def update_incident(
 
 @router.post("/{incident_id}/resolve", response_model=IncidentResponse)
 @legacy_router.post("/{incident_id}/resolve", response_model=IncidentResponse)
-def resolve_incident(
+async def resolve_incident(
     incident_id: str,
     resolve_in: IncidentResolve,
     db: Session = Depends(get_db),
@@ -381,7 +382,7 @@ def resolve_incident(
     db.commit()
     db.refresh(incident)
 
-    hindsight_service.retain_incident(
+    await hindsight_service.aretain_incident(
         incident_id=incident.id,
         service=incident.service,
         error=incident.error,
