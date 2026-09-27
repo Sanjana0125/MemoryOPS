@@ -1,188 +1,141 @@
-import { useState, useEffect } from 'react'
-import { Activity, Database, Server, CheckCircle2, XCircle, RefreshCw, Cpu, ShieldCheck } from 'lucide-react'
+import React, { useState, useEffect } from 'react';
+import { Activity, Brain, PlusCircle, LayoutDashboard, Search, Cpu } from 'lucide-react';
+import Dashboard from './components/Dashboard';
+import CreateIncident from './components/CreateIncident';
+import IncidentInvestigation from './components/IncidentInvestigation';
+import MemoryExplorer from './components/MemoryExplorer';
+import { fetchIncidents } from './api';
 
-function App() {
-  const [health, setHealth] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+export default function App() {
+  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [incidents, setIncidents] = useState([]);
+  const [selectedIncidentId, setSelectedIncidentId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const fetchHealth = async () => {
-    setLoading(true)
-    setError(null)
+  const loadIncidents = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/health')
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await fetchIncidents();
+      setIncidents(data);
+      if (data.length > 0 && !selectedIncidentId) {
+        setSelectedIncidentId(data[0].id);
       }
-      const data = await res.json()
-      setHealth(data)
     } catch (err) {
-      console.error('Failed to fetch backend health:', err)
-      setError(err.message || 'Failed to connect to backend server')
-      setHealth(null)
+      console.error('Failed to load incidents:', err);
+      setError(err.message || 'Failed to connect to backend server');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchHealth()
-  }, [])
+    loadIncidents();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
+      {/* Navigation Header */}
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-500/30">
-            <Activity className="h-6 w-6" />
+            <Activity className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-white">IncidentIQ</h1>
-            <p className="text-xs text-slate-400">AI-Powered DevOps & SRE Incident Response</p>
+            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              IncidentIQ <span className="text-[10px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded">v0.1.0</span>
+            </h1>
+            <p className="text-[11px] text-slate-400">AI-Powered DevOps & SRE Incident Response Assistant</p>
           </div>
         </div>
-        <div className="flex items-center space-x-2 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-full border border-slate-700">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>System Initialized</span>
-        </div>
+
+        {/* Navigation Tabs */}
+        <nav className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+          <button
+            onClick={() => setCurrentPage('dashboard')}
+            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+              currentPage === 'dashboard'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" /> Dashboard
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('create')}
+            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+              currentPage === 'create'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <PlusCircle className="w-3.5 h-3.5" /> Create Incident
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('investigate')}
+            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+              currentPage === 'investigate'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5" /> Investigation
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('memory')}
+            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+              currentPage === 'memory'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Brain className="w-3.5 h-3.5" /> Memory
+          </button>
+        </nav>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-6 space-y-8">
-        {/* Welcome Hero */}
-        <section className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 p-8 rounded-2xl border border-indigo-900/30 shadow-xl">
-          <div className="max-w-2xl space-y-3">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-              <ShieldCheck className="w-3.5 h-3.5" /> Platform Core Ready
-            </span>
-            <h2 className="text-3xl font-extrabold text-white tracking-tight">
-              Incident Response Assistant
-            </h2>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              IncidentIQ equips SRE and DevOps teams with real-time root cause diagnostics, intelligent triaging, and automated mitigation runbooks.
-            </p>
-          </div>
-        </section>
+      {/* Main Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6">
+        {currentPage === 'dashboard' && (
+          <Dashboard
+            incidents={incidents}
+            loading={loading}
+            error={error}
+            onNavigate={(page) => setCurrentPage(page)}
+            onSelectIncident={(id) => setSelectedIncidentId(id)}
+          />
+        )}
 
-        {/* Backend & System Status */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Server className="w-5 h-5 text-indigo-400" /> System Health Status
-            </h3>
-            <button
-              onClick={fetchHealth}
-              disabled={loading}
-              className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition text-slate-200 border border-slate-700 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
+        {currentPage === 'create' && (
+          <CreateIncident
+            onCreated={(newInc) => {
+              loadIncidents();
+              setSelectedIncidentId(newInc.id);
+              setCurrentPage('investigate');
+            }}
+            onCancel={() => setCurrentPage('dashboard')}
+          />
+        )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* API Status */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">FastAPI Backend</span>
-                  <div className="text-lg font-bold text-white mt-1">
-                    {loading ? 'Checking...' : health?.status === 'healthy' ? 'Operational' : 'Unavailable'}
-                  </div>
-                </div>
-                <div className="p-2 bg-slate-800 rounded-lg text-slate-400">
-                  <Cpu className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Status</span>
-                {loading ? (
-                  <span className="text-slate-400">Checking...</span>
-                ) : health?.status === 'healthy' ? (
-                  <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Healthy
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-rose-400 font-medium">
-                    <XCircle className="w-3.5 h-3.5" /> Down
-                  </span>
-                )}
-              </div>
-            </div>
+        {currentPage === 'investigate' && (
+          <IncidentInvestigation
+            incidentId={selectedIncidentId}
+            incidents={incidents}
+            onSelectIncident={(id) => setSelectedIncidentId(id)}
+          />
+        )}
 
-            {/* Database Status */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">SQLite Storage</span>
-                  <div className="text-lg font-bold text-white mt-1">
-                    {loading ? 'Checking...' : health?.database === 'connected' ? 'Connected' : 'Disconnected'}
-                  </div>
-                </div>
-                <div className="p-2 bg-slate-800 rounded-lg text-slate-400">
-                  <Database className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Database</span>
-                {loading ? (
-                  <span className="text-slate-400">Checking...</span>
-                ) : health?.database === 'connected' ? (
-                  <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Connected
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-rose-400 font-medium">
-                    <XCircle className="w-3.5 h-3.5" /> Error
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Service Version */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Core Version</span>
-                  <div className="text-lg font-bold text-white mt-1">
-                    {health?.version ? `v${health.version}` : 'v0.1.0'}
-                  </div>
-                </div>
-                <div className="p-2 bg-slate-800 rounded-lg text-slate-400">
-                  <Activity className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Environment</span>
-                <span className="text-indigo-400 font-medium">Development</span>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div className="bg-rose-950/40 border border-rose-800/50 rounded-xl p-4 text-xs text-rose-300 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>Backend Connection Error: {error}. Ensure FastAPI backend server is running on port 8000.</span>
-              </div>
-              <button
-                onClick={fetchHealth}
-                className="underline hover:text-rose-200 shrink-0 ml-2"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-        </section>
+        {currentPage === 'memory' && <MemoryExplorer />}
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-4 text-center text-xs text-slate-500">
-        IncidentIQ &copy; {new Date().getFullYear()} — DevOps & SRE Incident Management Platform
+      <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3.5 text-center text-xs text-slate-500">
+        IncidentIQ &copy; {new Date().getFullYear()} — SRE & DevOps Incident Management Platform (FastAPI + Hindsight + Groq)
       </footer>
     </div>
-  )
+  );
 }
-
-export default App
