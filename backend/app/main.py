@@ -4,10 +4,16 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.config import settings
-from app.database import get_db, check_database_health, engine, Base
+from app.database import get_db, check_database_health, engine, Base, SessionLocal
+from app.seed import seed_incidents
+from app.routers import incidents
 
-# Create tables if any defined
+# Create tables
 Base.metadata.create_all(bind=engine)
+
+# Auto-seed database with initial incidents
+with SessionLocal() as db_session:
+    seed_incidents(db_session)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -22,6 +28,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(incidents.router)
 
 class HealthResponse(BaseModel):
     status: str
