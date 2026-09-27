@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Text
+from sqlalchemy import Column, String, DateTime, Text, Boolean
 from app.database import Base
 
 class Incident(Base):
@@ -15,3 +15,4 @@ class Incident(Base):
     outcome = Column(String, nullable=False, default="Open")
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     resolved_at = Column(DateTime, nullable=True)
+    memory_retained = Column(Boolean, nullable=False, default=False)

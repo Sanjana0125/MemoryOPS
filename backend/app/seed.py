@@ -8,11 +8,12 @@ SEED_INCIDENTS = [
         "id": "INC-101",
         "service": "Payment API",
         "error": "Database connection timeout",
-        "symptoms": "High HTTP 504 Gateway Timeouts on /v1/charge endpoint, elevated checkout latency",
+        "symptoms": "High HTTP 504 Gateway Timeouts on /v1/charge endpoint, elevated API latency",
         "severity": "high",
         "root_cause": "Connection pool exhaustion due to leaked unclosed DB sessions during traffic surge",
-        "resolution": "Increased connection pool size from 20 to 100 and deployed hotfix patching session leaks",
+        "resolution": "Increased connection pool size from 20 to 100 and deployed hotfix for session leak",
         "outcome": "Resolved",
+        "memory_retained": True,
         "created_at": datetime(2026, 3, 15, 10, 30, 0, tzinfo=timezone.utc),
         "resolved_at": datetime(2026, 3, 15, 11, 15, 0, tzinfo=timezone.utc),
     },
@@ -25,6 +26,7 @@ SEED_INCIDENTS = [
         "root_cause": "Clock skew across auth cluster instances after NTP service restart causing invalid token signatures",
         "resolution": "Resynchronized NTP daemon across all nodes and rotated auth signing keys",
         "outcome": "Resolved",
+        "memory_retained": True,
         "created_at": datetime(2026, 3, 18, 14, 0, 0, tzinfo=timezone.utc),
         "resolved_at": datetime(2026, 3, 18, 14, 45, 0, tzinfo=timezone.utc),
     },
@@ -37,6 +39,7 @@ SEED_INCIDENTS = [
         "root_cause": "Expired notification payload keys missing TTL config causing memory exhaustion in Redis buffer",
         "resolution": "Applied volatile-lru eviction policy and backfilled TTLs for queued tasks",
         "outcome": "Resolved",
+        "memory_retained": True,
         "created_at": datetime(2026, 3, 20, 8, 10, 0, tzinfo=timezone.utc),
         "resolved_at": datetime(2026, 3, 20, 9, 30, 0, tzinfo=timezone.utc),
     },
@@ -49,6 +52,7 @@ SEED_INCIDENTS = [
         "root_cause": "Unassigned replica shards due to insufficient disk space on data node 2",
         "resolution": "Expanded volume capacity and triggered shard allocation rebalance",
         "outcome": "Resolved",
+        "memory_retained": True,
         "created_at": datetime(2026, 3, 22, 16, 0, 0, tzinfo=timezone.utc),
         "resolved_at": datetime(2026, 3, 22, 17, 20, 0, tzinfo=timezone.utc),
     },
@@ -61,6 +65,7 @@ SEED_INCIDENTS = [
         "root_cause": "Unindexed full-table scan on transaction_logs during high-volume query execution",
         "resolution": "Created composite index on (created_at, account_id) and enabled query caching in Redis",
         "outcome": "Resolved",
+        "memory_retained": True,
         "created_at": datetime(2026, 3, 24, 11, 0, 0, tzinfo=timezone.utc),
         "resolved_at": datetime(2026, 3, 24, 12, 10, 0, tzinfo=timezone.utc),
     },
@@ -73,6 +78,7 @@ SEED_INCIDENTS = [
         "root_cause": "Zombie ORM worker connections staying open after unexpected microservice crashes",
         "resolution": "Configured idle connection timeout setting in PgBouncer and restarted orphaned backend instances",
         "outcome": "Resolved",
+        "memory_retained": True,
         "created_at": datetime(2026, 3, 26, 9, 15, 0, tzinfo=timezone.utc),
         "resolved_at": datetime(2026, 3, 26, 10, 0, 0, tzinfo=timezone.utc),
     }
@@ -86,15 +92,3 @@ def seed_incidents(db: Session) -> None:
             db.add(incident)
             db.commit()
             db.refresh(incident)
-
-        # Retain seed incidents into Hindsight for semantic recall
-        hindsight_service.retain_incident(
-            incident_id=data["id"],
-            service=data["service"],
-            error=data["error"],
-            symptoms=data["symptoms"],
-            severity=data["severity"],
-            root_cause=data.get("root_cause"),
-            resolution=data.get("resolution"),
-            outcome=data.get("outcome", "Resolved"),
-        )

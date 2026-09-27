@@ -78,9 +78,9 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
 
 
 async def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentInvestigationResponse:
-    # 1. Hindsight RECALL (Async)
+    # 1. Hindsight RECALL (Async) - concise query, limited results
     recall_query = f"Service: {incident.service} | Error: {incident.error} | Symptoms: {incident.symptoms}"
-    recalled = await hindsight_service.arecall_memories(query=recall_query)
+    recalled = await hindsight_service.arecall_memories(query=recall_query, max_tokens=2048)
 
     similar_incidents: List[Dict[str, Any]] = []
     previous_root_causes: List[str] = []
@@ -96,7 +96,8 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         elif hasattr(results, "results"):
             items = getattr(results, "results") or []
 
-        for item in items:
+        # Limit recalled results to top 5 memories
+        for item in items[:5]:
             parsed = parse_memory_item(item)
             similar_incidents.append(parsed)
             if parsed["root_cause"] and parsed["root_cause"] not in previous_root_causes:
@@ -104,12 +105,12 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
             if parsed["resolution"] and parsed["resolution"] not in previous_resolutions:
                 previous_resolutions.append(parsed["resolution"])
     else:
-        # Fallback to DB resolved incidents if recall failed (e.g. Hindsight offline)
+        # Fallback to DB resolved incidents if recall failed (e.g. Hindsight 402 or offline)
         db_resolved = db.query(Incident).filter(
             Incident.id != incident.id,
             Incident.outcome.ilike("resolved")
         ).all()
-        for past in db_resolved:
+        for past in db_resolved[:5]:
             parsed = {
                 "incident_id": past.id,
                 "service": past.service,
@@ -127,7 +128,7 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
             if past.resolution and past.resolution not in previous_resolutions:
                 previous_resolutions.append(past.resolution)
 
-    # 2. Groq Analysis (pass recalled memories)
+    # 2. Groq Analysis
     ai_res = await ai_incident_service.aanalyze_incident(
         service=incident.service,
         error=incident.error,
@@ -171,6 +172,9 @@ async def create_incident(incident_in: IncidentCreate, db: Session = Depends(get
         incident_id = f"INC-{uuid.uuid4().hex[:6].upper()}"
 
     now = datetime.now(timezone.utc)
+    is_resolved = incident_in.outcome.lower() == "resolved"
+    has_details = bool(incident_in.root_cause and incident_in.resolution)
+
     incident = Incident(
         id=incident_id,
         service=incident_in.service,
@@ -181,15 +185,17 @@ async def create_incident(incident_in: IncidentCreate, db: Session = Depends(get
         resolution=incident_in.resolution,
         outcome=incident_in.outcome,
         created_at=now,
-        resolved_at=now if incident_in.outcome.lower() == "resolved" else None,
+        resolved_at=now if is_resolved else None,
+        memory_retained=False,
     )
 
     db.add(incident)
     db.commit()
     db.refresh(incident)
 
-    if incident.outcome.lower() == "resolved":
-        await hindsight_service.aretain_incident(
+    # RETAIN only if created as resolved WITH resolution details and not previously retained
+    if is_resolved and has_details:
+        retain_res = await hindsight_service.aretain_incident(
             incident_id=incident.id,
             service=incident.service,
             error=incident.error,
@@ -199,6 +205,10 @@ async def create_incident(incident_in: IncidentCreate, db: Session = Depends(get
             resolution=incident.resolution,
             outcome=incident.outcome,
         )
+        if retain_res.get("success"):
+            incident.memory_retained = True
+            db.commit()
+            db.refresh(incident)
 
     return incident
 
@@ -237,6 +247,7 @@ async def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = De
 
     result = await hindsight_service.arecall_memories(
         query=full_query,
+        max_tokens=2048,
         tags=query_in.tags,
     )
 
@@ -248,11 +259,11 @@ async def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = De
             items = raw_res.get("results", []) or raw_res.get("memories", [])
         elif isinstance(raw_res, list):
             items = raw_res
-        for item in items:
+        for item in items[:5]:
             memories_parsed.append(parse_memory_item(item))
     else:
         db_resolved = db.query(Incident).filter(Incident.outcome.ilike("resolved")).all()
-        for past in db_resolved:
+        for past in db_resolved[:5]:
             memories_parsed.append({
                 "incident_id": past.id,
                 "service": past.service,
@@ -296,10 +307,6 @@ async def analyze_new_incident(analysis_in: IncidentAnalysisRequest):
 @router.post("/{incident_id}/analyze", response_model=IncidentInvestigationResponse)
 @legacy_router.post("/{incident_id}/analyze", response_model=IncidentInvestigationResponse)
 async def analyze_existing_incident(incident_id: str, db: Session = Depends(get_db)):
-    """
-    POST /api/incidents/{incident_id}/analyze & POST /api/v1/incidents/{incident_id}/analyze
-    Connects Incident -> Hindsight RECALL -> Groq -> Recommendations
-    """
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(
@@ -345,8 +352,9 @@ async def update_incident(
     db.commit()
     db.refresh(incident)
 
-    if incident.outcome.lower() == "resolved":
-        await hindsight_service.aretain_incident(
+    # RETAIN only if resolved, has resolution details, and NOT already retained
+    if incident.outcome.lower() == "resolved" and incident.resolution and not incident.memory_retained:
+        retain_res = await hindsight_service.aretain_incident(
             incident_id=incident.id,
             service=incident.service,
             error=incident.error,
@@ -356,6 +364,10 @@ async def update_incident(
             resolution=incident.resolution,
             outcome=incident.outcome,
         )
+        if retain_res.get("success"):
+            incident.memory_retained = True
+            db.commit()
+            db.refresh(incident)
 
     return incident
 
@@ -382,15 +394,21 @@ async def resolve_incident(
     db.commit()
     db.refresh(incident)
 
-    await hindsight_service.aretain_incident(
-        incident_id=incident.id,
-        service=incident.service,
-        error=incident.error,
-        symptoms=incident.symptoms,
-        severity=incident.severity,
-        root_cause=incident.root_cause,
-        resolution=incident.resolution,
-        outcome=incident.outcome,
-    )
+    # RETAIN only if NOT already retained
+    if not incident.memory_retained:
+        retain_res = await hindsight_service.aretain_incident(
+            incident_id=incident.id,
+            service=incident.service,
+            error=incident.error,
+            symptoms=incident.symptoms,
+            severity=incident.severity,
+            root_cause=incident.root_cause,
+            resolution=incident.resolution,
+            outcome=incident.outcome,
+        )
+        if retain_res.get("success"):
+            incident.memory_retained = True
+            db.commit()
+            db.refresh(incident)
 
     return incident

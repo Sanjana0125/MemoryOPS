@@ -78,6 +78,69 @@ async def test_hindsight_service_http_402_insufficient_credits():
     assert res["status_code"] == 402
     assert "insufficient credits" in res["error"].lower()
 
+def test_no_hindsight_call_during_dashboard_loading():
+    """Verify loading dashboard incidents (GET /api/v1/incidents) executes NO Hindsight RETAIN/RECALL calls."""
+    with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall, \
+         patch("app.routers.incidents.hindsight_service.aretain_incident") as mock_retain:
+
+        response = client.get("/api/v1/incidents")
+        assert response.status_code == 200
+        mock_recall.assert_not_called()
+        mock_retain.assert_not_called()
+
+def test_retain_only_after_resolution_and_duplicate_prevention():
+    """Verify incident creation in 'Investigating' state does NOT trigger RETAIN, and duplicate resolve skips RETAIN."""
+    with patch("app.routers.incidents.hindsight_service.aretain_incident") as mock_retain:
+        mock_retain.return_value = {"success": True, "incident_id": "INC-TEST-OPT"}
+
+        # 1. Create incident -> NO RETAIN
+        create_resp = client.post("/api/v1/incidents", json={
+            "service": "Optimization Test Service",
+            "error": "Memory exhaustion",
+            "symptoms": "High memory footprint",
+            "outcome": "Investigating"
+        })
+        assert create_resp.status_code == 201
+        inc_data = create_resp.json()
+        assert inc_data["memory_retained"] is False
+        mock_retain.assert_not_called()
+
+        # 2. First Resolve -> RETAIN called
+        resolve_resp = client.post(f"/api/v1/incidents/{inc_data['id']}/resolve", json={
+            "root_cause": "Unbounded cache size",
+            "resolution": "Configured max cache size and eviction",
+            "outcome": "Resolved"
+        })
+        assert resolve_resp.status_code == 200
+        assert resolve_resp.json()["memory_retained"] is True
+        assert mock_retain.call_count == 1
+
+        # 3. Duplicate Resolve -> RETAIN skipped
+        mock_retain.reset_mock()
+        resolve_again = client.post(f"/api/v1/incidents/{inc_data['id']}/resolve", json={
+            "root_cause": "Unbounded cache size",
+            "resolution": "Configured max cache size and eviction",
+            "outcome": "Resolved"
+        })
+        assert resolve_again.status_code == 200
+        mock_retain.assert_not_called()
+
+def test_recall_result_limiting():
+    """Verify RECALL limits returned memories to top 5."""
+    with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall:
+        mock_memories = [{"text": f"Incident ID: INC-{i}\nService: Test\nError: err"} for i in range(10)]
+        mock_recall.return_value = {
+            "success": True,
+            "results": {"results": mock_memories}
+        }
+
+        response = client.post("/api/v1/incidents/recall", json={
+            "query": "Test query"
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["memories"]) == 5
+
 def test_recall_api_endpoint():
     with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall:
         mock_recall.return_value = {
