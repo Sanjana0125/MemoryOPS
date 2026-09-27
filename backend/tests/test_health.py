@@ -11,7 +11,7 @@ def test_root():
     response = client.get("/")
     assert response.status_code == 200
     data = response.json()
-    assert data["app"] == "IncidentIQ API"
+    assert data["app"] == "MemoryOps API"
     assert data["status"] == "running"
 
 def test_health_check():

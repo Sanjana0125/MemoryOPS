@@ -1,6 +1,8 @@
-# IncidentIQ
+# MEMORYOPS
 
-**IncidentIQ** is an AI-powered incident response assistant designed specifically for DevOps and Site Reliability Engineering (SRE) teams. It combines persistent memory capabilities (powered by Hindsight) with real-time LLM reasoning (powered by Groq) to accelerate root-cause analysis and remediation during live infrastructure outages.
+> **AI Incident Response That Learns From Every Production Incident**
+
+**MemoryOps** is an AI-powered incident response platform for DevOps and SRE teams. It learns from previous production incidents using persistent memory, recalls relevant past incidents during new investigations, and provides evidence-backed recommendations to help engineers diagnose and resolve incidents faster.
 
 ---
 
@@ -14,13 +16,13 @@ During major service outages, DevOps and SRE engineers face intense pressure:
 
 ---
 
-## 2. IncidentIQ Solution
+## 2. MemoryOps Solution
 
-IncidentIQ provides a centralized, memory-augmented incident response workspace:
-1. **Persistent Memory RAG via Hindsight**: Automatically retains verified incident learnings (symptoms, root causes, and resolutions).
-2. **Semantic Memory Recall**: When a new incident occurs, IncidentIQ queries Hindsight using semantic search to pull relevant historical incidents—even if the error text is not verbatim identical.
-3. **Grounded AI Reasoning via Groq**: Groq AI synthesizes current incident symptoms with recalled historical memories to recommend concrete remediation actions while citing the supporting evidence.
-4. **Human-in-the-Loop Control**: IncidentIQ never executes actions autonomously. It presents evidence-based recommendations, keeping the human engineer fully in charge of operational decisions.
+MemoryOps provides a centralized, memory-augmented incident response workspace:
+1. **Persistent Memory via Hindsight**: Automatically retains verified incident learnings (symptoms, root causes, and resolutions) as the persistent memory layer.
+2. **Semantic Memory Recall**: When a new incident occurs, MemoryOps queries Hindsight using semantic search to pull relevant historical incidents—even if the error text is not verbatim identical.
+3. **Grounded AI Reasoning via Groq**: Groq AI acts as the AI reasoning layer, synthesizing current incident symptoms with recalled historical memories to recommend concrete remediation actions while clearly keeping historical evidence separated from AI-generated analysis.
+4. **Human-in-the-Loop Control**: MemoryOps never executes actions autonomously. The engineer remains in complete control of the final incident-response decision.
 
 ---
 
@@ -68,7 +70,7 @@ IncidentIQ provides a centralized, memory-augmented incident response workspace:
 
 ## 4. System Architecture
 
-IncidentIQ uses a decoupled monorepo architecture designed for maintainability and future enterprise extensions:
+MemoryOps uses a decoupled monorepo architecture designed for maintainability and future enterprise extensions:
 
 ```
                   ┌─────────────────────────────────┐
@@ -110,7 +112,7 @@ IncidentIQ uses a decoupled monorepo architecture designed for maintainability a
 
 ## 6. Hindsight Integration
 
-IncidentIQ relies on **Hindsight** as its long-term persistent memory store. Instead of passing massive unstructured logs to an LLM, IncidentIQ stores structured experience documents in Hindsight vector memory banks (`HINDSIGHT_BANK_ID`).
+MemoryOps relies on **Hindsight** as its long-term persistent memory layer. Instead of passing massive unstructured logs to an LLM, MemoryOps stores structured experience documents in Hindsight vector memory banks (`HINDSIGHT_BANK_ID`).
 
 ### Hindsight Integration Architecture
 - `backend/app/hindsight_service.py` encapsulates the `Hindsight` client.
@@ -140,7 +142,7 @@ When an incident is resolved by an engineer via `POST /api/v1/incidents/{inciden
 ## 8. Hindsight RECALL Workflow
 
 When an incident is analyzed via `POST /api/v1/incidents/{incident_id}/analyze`:
-1. IncidentIQ forms a semantic query: `Service: <service> | Error: <error> | Symptoms: <symptoms>`.
+1. MemoryOps forms a semantic query: `Service: <service> | Error: <error> | Symptoms: <symptoms>`.
 2. `HindsightService.recall_memories()` executes vector recall against Hindsight.
 3. Relevant memories are returned along with matched historical root causes and resolutions.
 4. Even if a new incident has slightly different wording (e.g., "Postgres connection pool exhausted" vs "Database connection timeout"), Hindsight recalls the matching past outage.
@@ -158,7 +160,7 @@ When an incident is analyzed via `POST /api/v1/incidents/{incident_id}/analyze`:
 
 ## 10. Groq Integration
 
-IncidentIQ uses Groq's high-speed inference engine (`llama-3.3-70b-versatile` model) implemented in `backend/app/ai_service.py`:
+MemoryOps uses Groq's high-speed inference engine (`llama-3.3-70b-versatile` model) as its AI reasoning layer, implemented in `backend/app/ai_service.py`:
 - Formats structured system prompts with strict JSON output schemas.
 - Parses JSON responses containing: `probable_root_cause`, `recommended_action`, `confidence`, `reasoning`, and `supporting_historical_incidents`.
 - Features fallback mechanisms: if `GROQ_API_KEY` is not provided or API limits are reached, the service falls back gracefully without breaking the UI.
@@ -243,7 +245,7 @@ Configured via `.env` in the root directory:
 
 - **Secret Protection**: `.env` files and `.db` database binaries are excluded from version control via `.gitignore`.
 - **No Direct Key Exposure**: API keys are accessed exclusively on the backend via environment variables.
-- **Human-in-the-Loop Safeguard**: IncidentIQ provides recommendations; it does not perform destructive infrastructure commands autonomously.
+- **Human-in-the-Loop Safeguard**: MemoryOps provides evidence-backed recommendations; it does not perform destructive infrastructure commands autonomously.
 - **Data Sanitization**: Pydantic input validation prevents malformed payloads or injection attempts into database queries.
 
 ---
@@ -251,8 +253,8 @@ Configured via `.env` in the root directory:
 ## 16. Example Real-World Incident Workflow
 
 1. **Alert Received**: `Payment API` throws HTTP 504 Gateway Timeouts under load.
-2. **Create Incident**: Engineer enters `Payment API` / `Database connection timeout` in IncidentIQ.
-3. **Run Investigation**: IncidentIQ executes Hindsight RECALL and finds `INC-101` where a connection pool session leak was fixed by expanding pool size to 100.
+2. **Create Incident**: Engineer enters `Payment API` / `Database connection timeout` in MemoryOps.
+3. **Run Investigation**: MemoryOps executes Hindsight RECALL and finds `INC-101` where a connection pool session leak was fixed by expanding pool size to 100.
 4. **AI Recommendation**: Groq AI recommends inspecting active pool connections and increasing pool capacity.
 5. **Human Action**: On-call engineer verifies connection metrics, applies hotfix, and marks incident resolved.
 6. **Experience Retained**: Resolution details are retained in Hindsight for future on-call engineers.
@@ -301,7 +303,7 @@ Configured via `.env` in the root directory:
 ## 18. Current Limitations & Future Improvements
 
 ### Current Limitations
-- **Local Hindsight Instance Required for Full Vector RAG**: When Hindsight API is offline or unconfigured, IncidentIQ gracefully falls back to querying resolved incidents stored in SQLite.
+- **Local or Cloud Hindsight Instance Required for Full Vector RAG**: When Hindsight API is offline or unconfigured, MemoryOps gracefully falls back to querying resolved incidents stored in SQLite.
 - **Single-Tenant Database**: Designed for single-team or small-organization deployment.
 
 ### Future Improvements

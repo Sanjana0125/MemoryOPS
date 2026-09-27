@@ -123,8 +123,8 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
       {loading ? (
         <div className="py-20 text-center space-y-3 bg-slate-900 border border-slate-800 rounded-xl">
           <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin mx-auto" />
-          <p className="text-sm text-slate-300 font-semibold">Running IncidentIQ Memory Pipeline...</p>
-          <p className="text-xs text-slate-500">Querying Hindsight RAG Bank & Groq LLM Reasoning</p>
+          <p className="text-sm text-slate-300 font-semibold">Running MemoryOps Pipeline...</p>
+          <p className="text-xs text-slate-500">Querying Hindsight Persistent Memory & Groq LLM Reasoning</p>
         </div>
       ) : error ? (
         <div className="p-6 bg-rose-950/40 border border-rose-800/50 rounded-xl text-xs text-rose-300">
@@ -380,7 +380,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                 <HelpCircle className="w-4 h-4 text-indigo-400" /> Why this recommendation?
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                This recommendation was synthesized by Groq AI by grounding its reasoning in Hindsight recalled memories from past resolved outages. Rather than hallucinating generic advice, IncidentIQ matched the exact symptoms ({incident.symptoms}) against prior incidents to propose proven remediation steps.
+                This recommendation was synthesized by Groq AI by grounding its reasoning in Hindsight recalled memories from past resolved outages. Rather than hallucinating generic advice, MemoryOps matched the exact symptoms ({incident.symptoms}) against prior incidents to propose proven remediation steps.
               </p>
 
               {/* Supporting Historical Memories Evidence List */}

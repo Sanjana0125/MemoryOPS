@@ -18,7 +18,7 @@ with SessionLocal() as db_session:
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="IncidentIQ API - AI-powered incident response assistant for DevOps/SRE engineers",
+    description="MemoryOps API - AI-powered incident response assistant for DevOps/SRE engineers",
 )
 
 app.add_middleware(

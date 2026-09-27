@@ -7,7 +7,7 @@ from app.hindsight_service import hindsight_service
 
 logger = logging.getLogger("incidentiq.ai_service")
 
-SYSTEM_PROMPT = """You are IncidentIQ AI, an expert SRE/DevOps incident response assistant.
+SYSTEM_PROMPT = """You are MemoryOps AI, an expert SRE/DevOps incident response assistant.
 Your task is to analyze an incoming IT/DevOps incident using recalled historical incident memories from Hindsight.
 
 CRITICAL INSTRUCTIONS:

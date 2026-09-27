@@ -30,7 +30,7 @@ def get_cors_origins() -> list[str]:
     ]
 
 class Settings(BaseModel):
-    PROJECT_NAME: str = "IncidentIQ API"
+    PROJECT_NAME: str = "MemoryOps API"
     VERSION: str = "0.1.0"
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
     CORS_ORIGINS: list[str] = Field(default_factory=get_cors_origins)

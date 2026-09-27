@@ -44,9 +44,9 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              IncidentIQ <span className="text-[10px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded">v0.1.0</span>
+              MEMORYOPS <span className="text-[10px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded">v0.1.0</span>
             </h1>
-            <p className="text-[11px] text-slate-400">AI-Powered DevOps & SRE Incident Response Assistant</p>
+            <p className="text-[11px] text-slate-400">AI Incident Response That Learns From Every Production Incident</p>
           </div>
         </div>
 
@@ -134,7 +134,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3.5 text-center text-xs text-slate-500">
-        IncidentIQ &copy; {new Date().getFullYear()} — SRE & DevOps Incident Management Platform (FastAPI + Hindsight + Groq)
+        MemoryOps &copy; {new Date().getFullYear()} — SRE & DevOps Incident Management Platform (FastAPI + Hindsight + Groq)
       </footer>
     </div>
   );

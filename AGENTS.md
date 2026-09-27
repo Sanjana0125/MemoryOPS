@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Instructions for AI Agents working on IncidentIQ.
+Instructions for AI Agents working on MemoryOps.
 
 ## Project Overview
 
-IncidentIQ is an AI-powered incident response assistant designed for DevOps/SRE engineers.
+MemoryOps is an AI-powered incident response assistant designed for DevOps/SRE engineers.
 
 ## Codebase Guidelines & Standards
 
