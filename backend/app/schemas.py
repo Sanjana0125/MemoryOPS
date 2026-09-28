@@ -75,3 +75,5 @@ class IncidentInvestigationResponse(BaseModel):
     ai_analysis: Dict[str, Any]
     recommended_action: str
     explanation: str
+    recall_status: str = Field(default="failed", description="Status of recall: success, empty, failed")
+    recall_source: str = Field(default="sqlite_fallback", description="Source of recall data")

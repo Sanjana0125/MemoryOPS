@@ -86,7 +86,11 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
     previous_root_causes: List[str] = []
     previous_resolutions: List[str] = []
 
+    recall_status = "failed"
+    recall_source = "sqlite_fallback"
+
     if recalled.get("success") and recalled.get("results") is not None:
+        recall_source = "hindsight"
         results = recalled["results"]
         items = []
         if isinstance(results, dict):
@@ -96,37 +100,24 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         elif hasattr(results, "results"):
             items = getattr(results, "results") or []
 
-        # Limit recalled results to top 5 memories
-        for item in items[:5]:
-            parsed = parse_memory_item(item)
-            similar_incidents.append(parsed)
-            if parsed["root_cause"] and parsed["root_cause"] not in previous_root_causes:
-                previous_root_causes.append(parsed["root_cause"])
-            if parsed["resolution"] and parsed["resolution"] not in previous_resolutions:
-                previous_resolutions.append(parsed["resolution"])
+        if len(items) > 0:
+            recall_status = "success"
+            # Limit recalled results to top 5 memories
+            for item in items[:5]:
+                parsed = parse_memory_item(item)
+                similar_incidents.append(parsed)
+                if parsed["root_cause"] and parsed["root_cause"] not in previous_root_causes:
+                    previous_root_causes.append(parsed["root_cause"])
+                if parsed["resolution"] and parsed["resolution"] not in previous_resolutions:
+                    previous_resolutions.append(parsed["resolution"])
+        else:
+            recall_status = "empty"
     else:
-        # Fallback to DB resolved incidents if recall failed (e.g. Hindsight 402 or offline)
-        db_resolved = db.query(Incident).filter(
-            Incident.id != incident.id,
-            Incident.outcome.ilike("resolved")
-        ).all()
-        for past in db_resolved[:5]:
-            parsed = {
-                "incident_id": past.id,
-                "service": past.service,
-                "error": past.error,
-                "symptoms": past.symptoms,
-                "root_cause": past.root_cause or "",
-                "resolution": past.resolution or "",
-                "outcome": past.outcome,
-                "date": past.created_at.isoformat() if past.created_at else "",
-                "raw_text": f"Incident ID: {past.id}\nService: {past.service}\nError: {past.error}\nRoot Cause: {past.root_cause}\nResolution: {past.resolution}",
-            }
-            similar_incidents.append(parsed)
-            if past.root_cause and past.root_cause not in previous_root_causes:
-                previous_root_causes.append(past.root_cause)
-            if past.resolution and past.resolution not in previous_resolutions:
-                previous_resolutions.append(past.resolution)
+        # Hindsight RECALL failed (e.g. 401, 402, network error, or offline)
+        recall_status = "failed"
+        recall_source = "hindsight_error"
+        # Keep similar_incidents, previous_root_causes, and previous_resolutions empty
+        # so local SQLite records are not falsely presented as "Hindsight Recalled" memories.
 
     # 2. Groq Analysis
     ai_res = await ai_incident_service.aanalyze_incident(
@@ -161,6 +152,8 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         ai_analysis=ai_analysis_summary,
         recommended_action=recommended_action,
         explanation=explanation,
+        recall_status=recall_status,
+        recall_source=recall_source,
     )
 
 @router.post("", response_model=IncidentResponse, status_code=status.HTTP_201_CREATED)

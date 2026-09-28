@@ -235,12 +235,20 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                 </h3>
               </div>
               <span className="text-xs text-purple-300 bg-purple-950 px-3 py-1 rounded-full border border-purple-800 font-mono">
-                {investigation.similar_historical_incidents?.length || 0} Historical Memories Recalled
+                {investigation.recall_status === 'failed' || investigation.recall_source === 'hindsight_error' || investigation.recall_source === 'sqlite_fallback'
+                  ? 'Hindsight Offline / Service Failure'
+                  : investigation.recall_status === 'empty' || investigation.similar_historical_incidents?.length === 0
+                  ? '0 Historical Memories Recalled'
+                  : `${investigation.similar_historical_incidents?.length || 0} Historical Memories Recalled`}
               </span>
             </div>
 
             <p className="text-xs text-slate-400">
-              Hindsight uses semantic vector search across persistent memory banks to retrieve relevant past incidents even when wording is not identical.
+              {investigation.recall_status === 'failed' || investigation.recall_source === 'hindsight_error' || investigation.recall_source === 'sqlite_fallback'
+                ? 'Hindsight memory service was unconfigured or encountered an API/network error during recall.'
+                : investigation.recall_status === 'empty' || investigation.similar_historical_incidents?.length === 0
+                ? 'Hindsight memory recall completed successfully, but no matching past incident memories were found for this query.'
+                : 'Hindsight uses semantic vector search across persistent memory banks to retrieve relevant past incidents even when wording is not identical.'}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -380,7 +388,13 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                 <HelpCircle className="w-4 h-4 text-indigo-400" /> Why this recommendation?
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                This recommendation was synthesized by Groq AI by grounding its reasoning in Hindsight recalled memories from past resolved outages. Rather than hallucinating generic advice, MemoryOps matched the exact symptoms ({incident.symptoms}) against prior incidents to propose proven remediation steps.
+                {investigation.recall_status === 'failed' || investigation.recall_source === 'hindsight_error' || investigation.recall_source === 'sqlite_fallback' ? (
+                  `Hindsight memory service was unavailable or unconfigured during this investigation. Analysis proceeded using current incident symptoms (${incident.symptoms}) and general SRE troubleshooting knowledge without historical vector memory context.`
+                ) : investigation.recall_status === 'empty' || investigation.similar_historical_incidents?.length === 0 ? (
+                  `No matching historical memories were retrieved from Hindsight for this incident query. Groq AI synthesized this recommendation based strictly on current incident symptoms (${incident.symptoms}) and general SRE/DevOps troubleshooting best practices.`
+                ) : (
+                  `This recommendation was synthesized by Groq AI by grounding its reasoning in ${investigation.similar_historical_incidents.length} recalled historical incident memory${investigation.similar_historical_incidents.length > 1 ? 'ies' : ''} from Hindsight. MemoryOps matched observed symptoms (${incident.symptoms}) against past resolved outages to propose evidence-backed remediation steps.`
+                )}
               </p>
 
               {/* Supporting Historical Memories Evidence List */}

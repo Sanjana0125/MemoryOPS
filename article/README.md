@@ -106,8 +106,8 @@ When external API keys or Hindsight services are unavailable, MemoryOps degrades
 
 If Hindsight is offline or returns an error (e.g. HTTP 402 Insufficient Credits), the backend falls back to querying resolved incidents stored in SQLite. If Groq LLM is unconfigured, `_fallback_analysis()` applies rule-based heuristic analysis and explicitly sets confidence to `low`.
 
-![MemoryOps fallback behavior](images/fallback-behavior.png)
-*Fallback rule-based heuristic applied when external AI providers are unconfigured or unavailable.*
+![MemoryOps graceful degradation](images/graceful-degradation.png)
+*MemoryOps continues incident investigation and displays low-confidence fallback reasoning when Hindsight or Groq returns API authentication or quota errors.*
 
 ## Engineering Lessons & Limitations
 

@@ -44,6 +44,8 @@ def test_investigate_similar_known_incident():
         assert "Increased connection pool size from 20 to 100" in data["previous_resolutions"]
         assert data["recommended_action"] == "Increase database connection pool size to 100"
         assert "INC-101" in data["explanation"] or "Historical evidence" in data["explanation"]
+        assert data["recall_status"] == "success"
+        assert data["recall_source"] == "hindsight"
 
 def test_investigate_new_unrelated_incident():
     """Test 2: New unrelated incident handles empty historical memories gracefully."""
@@ -75,6 +77,39 @@ def test_investigate_new_unrelated_incident():
 
         assert data["current_incident"]["id"] == inc_id
         assert data["recommended_action"] == "Check dilution refrigerator temperature logs"
+        assert data["recall_status"] == "empty"
+        assert data["recall_source"] == "hindsight"
+        assert len(data["similar_historical_incidents"]) == 0
+        assert len(data["previous_root_causes"]) == 0
+        assert len(data["previous_resolutions"]) == 0
+
+def test_investigate_hindsight_failure_fallback():
+    """Test 4: Investigation handles Hindsight recall service failure gracefully with recall_status='failed'."""
+    inc_id = "INC-101"
+    with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall, \
+         patch("app.routers.incidents.ai_incident_service.aanalyze_incident") as mock_analyze:
+
+        # Simulate Hindsight service error (e.g. HTTP 402, 401, or offline)
+        mock_recall.return_value = {"success": False, "error": "Insufficient credits"}
+        mock_analyze.return_value = {
+            "success": False,
+            "probable_root_cause": "Potential issue in service Payment API",
+            "recommended_action": "Check logs and metrics for Payment API",
+            "confidence": "low",
+            "reasoning": "Fallback rule-based heuristic applied because AI analysis was unavailable.",
+            "supporting_historical_incidents": []
+        }
+
+        response = client.post(f"/api/incidents/{inc_id}/analyze")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["current_incident"]["id"] == inc_id
+        assert data["recall_status"] == "failed"
+        assert data["recall_source"] == "hindsight_error"
+        assert len(data["similar_historical_incidents"]) == 0
+        assert len(data["previous_root_causes"]) == 0
+        assert len(data["previous_resolutions"]) == 0
 
 def test_resolved_incident_retention_workflow():
     """Test 3: Resolving an incident triggers Hindsight RETAIN so experience can be recalled in future."""
