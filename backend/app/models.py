@@ -16,3 +16,4 @@ class Incident(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     resolved_at = Column(DateTime, nullable=True)
     memory_retained = Column(Boolean, nullable=False, default=False)
+    ai_recommendation = Column(Text, nullable=True)

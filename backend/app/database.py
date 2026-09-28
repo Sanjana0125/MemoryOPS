@@ -20,6 +20,21 @@ engine = create_engine(
     connect_args=connect_args,
 )
 
+# Automatic lightweight migration for existing SQLite databases
+def run_migrations():
+    try:
+        with engine.connect() as conn:
+            # Check columns in incidents table
+            result = conn.execute(text("PRAGMA table_info(incidents)"))
+            columns = [row[1] for row in result.fetchall()]
+            if columns and "ai_recommendation" not in columns:
+                conn.execute(text("ALTER TABLE incidents ADD COLUMN ai_recommendation TEXT"))
+                conn.commit()
+    except Exception as e:
+        print(f"Migration check info: {e}")
+
+run_migrations()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

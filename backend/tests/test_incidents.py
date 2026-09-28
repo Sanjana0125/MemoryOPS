@@ -113,3 +113,30 @@ def test_validation_error():
     }
     response = client.post("/api/v1/incidents", json=invalid_inc)
     assert response.status_code == 422
+
+def test_incident_persistence_retrieval_after_creation():
+    """Verify that a created incident is stored permanently and retrievable across subsequent requests."""
+    payload = {
+        "service": "Inventory Service",
+        "error": "Stock decrement lock failure",
+        "symptoms": "Overbooking items during flash sale",
+        "severity": "high",
+        "outcome": "Investigating"
+    }
+    create_resp = client.post("/api/v1/incidents", json=payload)
+    assert create_resp.status_code == 201
+    created_id = create_resp.json()["id"]
+
+    # Retrieve created incident from database via list GET
+    list_resp = client.get("/api/v1/incidents")
+    assert list_resp.status_code == 200
+    all_incidents = list_resp.json()
+    matched = next((inc for inc in all_incidents if inc["id"] == created_id), None)
+    assert matched is not None
+    assert matched["service"] == "Inventory Service"
+    assert matched["error"] == "Stock decrement lock failure"
+
+    # Retrieve created incident directly via ID GET
+    get_resp = client.get(f"/api/v1/incidents/{created_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["id"] == created_id

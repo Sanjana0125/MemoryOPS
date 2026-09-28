@@ -35,6 +35,7 @@ class IncidentResponse(IncidentBase):
     created_at: datetime
     resolved_at: Optional[datetime] = None
     memory_retained: bool = False
+    ai_recommendation: Optional[str] = None
 
 class MemoryRecallQuery(BaseModel):
     query: Optional[str] = Field(default=None, description="Search query for historical incidents")

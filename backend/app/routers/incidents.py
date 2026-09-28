@@ -140,6 +140,12 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
     recommended_action = ai_res.get("recommended_action", "Investigate service logs and system metrics.")
     explanation = ai_res.get("reasoning", "Analysis based on current symptoms and historical incident recall.")
 
+    # Persist the AI recommendation and probable root cause to database if missing or updated
+    if recommended_action and incident.ai_recommendation != recommended_action:
+        incident.ai_recommendation = recommended_action
+        db.commit()
+        db.refresh(incident)
+
     ai_analysis_summary = {
         "probable_root_cause": ai_res.get("probable_root_cause"),
         "confidence": ai_res.get("confidence"),

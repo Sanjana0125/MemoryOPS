@@ -14,7 +14,10 @@ else:
     if backend_env.exists():
         load_dotenv(dotenv_path=backend_env)
 
-DEFAULT_DB_PATH = BASE_DIR / "data" / "incidentiq.db"
+# Ensure data directory exists
+data_dir = BASE_DIR / "data"
+data_dir.mkdir(parents=True, exist_ok=True)
+DEFAULT_DB_PATH = (data_dir / "incidentiq.db").resolve()
 
 def get_cors_origins() -> list[str]:
     cors_env = os.getenv("CORS_ORIGINS")
