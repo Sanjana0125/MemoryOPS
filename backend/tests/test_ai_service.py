@@ -138,7 +138,7 @@ def test_groq_model_loaded_from_settings():
     from app.config import settings
     service = AIIncidentService(api_key="gsk_test")
     assert service.model == settings.GROQ_MODEL
-    assert service.model == "llama-3.1-8b-instant"
+    assert service.model == "openai/gpt-oss-20b"
 
 
 def test_groq_custom_model_override():
@@ -162,7 +162,7 @@ def test_groq_api_call_passes_configured_model():
     mock_completion.choices = [mock_choice]
     mock_client.chat.completions.create.return_value = mock_completion
 
-    service = AIIncidentService(api_key="gsk_test", model="llama-3.1-8b-instant")
+    service = AIIncidentService(api_key="gsk_test", model="openai/gpt-oss-20b")
     service._client = mock_client
 
     res = service.analyze_incident(service="Auth", error="401 Unauthorized", symptoms="Login failed")
@@ -170,7 +170,7 @@ def test_groq_api_call_passes_configured_model():
     assert res["success"] is True
     # Verify model kwarg passed to create()
     call_kwargs = mock_client.chat.completions.create.call_args[1]
-    assert call_kwargs["model"] == "llama-3.1-8b-instant"
+    assert call_kwargs["model"] == "openai/gpt-oss-20b"
 
 
 def test_groq_model_not_found_triggers_fallback():

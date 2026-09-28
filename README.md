@@ -1,4 +1,4 @@
-# MemoryOps
+# MEMORYOPS
 
 > **AI Incident Response That Learns From Every Production Incident**
 
@@ -106,7 +106,7 @@ MemoryOps uses a decoupled monorepo architecture designed for maintainability an
 - **Backend API**: FastAPI, Python 3.12, Uvicorn, Pydantic v2.
 - **Database**: SQLite with SQLAlchemy ORM.
 - **Central Memory Engine**: Hindsight (via official `hindsight-client` Python SDK).
-- **AI Reasoning Engine**: Groq Cloud LLM SDK (`groq` Python package with `llama-3.1-8b-instant`).
+- **AI Reasoning Engine**: Groq Cloud LLM SDK (`groq` Python package with `openai/gpt-oss-20b`).
 
 ---
 
@@ -160,7 +160,7 @@ When an incident is analyzed via `POST /api/v1/incidents/{incident_id}/analyze`:
 
 ## 10. Groq Integration
 
-MemoryOps uses Groq's high-speed inference engine (`llama-3.1-8b-instant` model) as its AI reasoning layer, implemented in `backend/app/ai_service.py`:
+MemoryOps uses Groq's high-speed inference engine (`openai/gpt-oss-20b` model) as its AI reasoning layer, implemented in `backend/app/ai_service.py`:
 - Formats structured system prompts with strict JSON output schemas.
 - Parses JSON responses containing: `probable_root_cause`, `recommended_action`, `confidence`, `reasoning`, and `supporting_historical_incidents`.
 - Features fallback mechanisms: if `GROQ_API_KEY` is not provided or API limits are reached, the service falls back gracefully without breaking the UI.
@@ -237,7 +237,7 @@ Configured via `.env` in the root directory:
 | `HINDSIGHT_API_KEY` | Hindsight authentication API key | `""` |
 | `HINDSIGHT_BANK_ID` | Hindsight memory bank name | `incidentiq` |
 | `GROQ_API_KEY` | Groq Cloud API key | `""` |
-| `GROQ_MODEL` | Groq LLM model name | `llama-3.1-8b-instant` |
+| `GROQ_MODEL` | Groq LLM model name | `openai/gpt-oss-20b` |
 
 ---
 
