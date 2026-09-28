@@ -36,13 +36,13 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
 
     text_content = d.get("text") or d.get("content") or str(d)
 
-    # Parse structured fields from text if present
     incident_id = d.get("incident_id") or d.get("document_id") or ""
     service = d.get("service") or ""
     error = d.get("error") or ""
     symptoms = d.get("symptoms") or ""
     root_cause = d.get("root_cause") or ""
     resolution = d.get("resolution") or ""
+    post_mortem = d.get("post_mortem") or ""
     outcome = d.get("outcome") or "Resolved"
     date_str = d.get("created_at") or d.get("date") or ""
 
@@ -61,8 +61,12 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
             root_cause = line_clean.replace("Root Cause:", "").strip()
         elif line_clean.startswith("Resolution:"):
             resolution = line_clean.replace("Resolution:", "").strip()
+        elif line_clean.startswith("Post-mortem:"):
+            post_mortem = line_clean.replace("Post-mortem:", "").strip()
         elif line_clean.startswith("Outcome:"):
             outcome = line_clean.replace("Outcome:", "").strip()
+
+    relevance = f"Historical {service} incident with matching error patterns and resolution procedures."
 
     return {
         "incident_id": incident_id,
@@ -71,14 +75,16 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
         "symptoms": symptoms,
         "root_cause": root_cause,
         "resolution": resolution,
+        "post_mortem": post_mortem,
         "outcome": outcome,
         "date": date_str,
+        "relevance": relevance,
         "raw_text": text_content,
     }
 
 
 async def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentInvestigationResponse:
-    # 1. Hindsight RECALL (Async) - concise query, limited results
+    # 1. Hindsight RECALL (Async)
     recall_query = f"Service: {incident.service} | Error: {incident.error} | Symptoms: {incident.symptoms}"
     recalled = await hindsight_service.arecall_memories(query=recall_query, max_tokens=2048)
 
@@ -86,23 +92,25 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
     previous_root_causes: List[str] = []
     previous_resolutions: List[str] = []
 
+    memory_status = "unavailable"
     recall_status = "failed"
-    recall_source = "sqlite_fallback"
+    recall_source = "hindsight_error"
+    message = "Historical memory unavailable during investigation."
 
     if recalled.get("success") and recalled.get("results") is not None:
-        recall_source = "hindsight"
-        results = recalled["results"]
+        raw_res = recalled["results"]
         items = []
-        if isinstance(results, dict):
-            items = results.get("results", []) or results.get("memories", [])
-        elif isinstance(results, list):
-            items = results
-        elif hasattr(results, "results"):
-            items = getattr(results, "results") or []
+        if isinstance(raw_res, dict):
+            items = raw_res.get("results", []) or raw_res.get("memories", [])
+        elif isinstance(raw_res, list):
+            items = raw_res
+        elif hasattr(raw_res, "results"):
+            items = getattr(raw_res, "results") or []
 
         if len(items) > 0:
+            memory_status = "ok"
             recall_status = "success"
-            # Limit recalled results to top 5 memories
+            recall_source = "hindsight"
             for item in items[:5]:
                 parsed = parse_memory_item(item)
                 similar_incidents.append(parsed)
@@ -110,14 +118,17 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
                     previous_root_causes.append(parsed["root_cause"])
                 if parsed["resolution"] and parsed["resolution"] not in previous_resolutions:
                     previous_resolutions.append(parsed["resolution"])
+            message = f"Recalled {len(similar_incidents)} relevant historical memories from Hindsight."
         else:
+            memory_status = "empty"
             recall_status = "empty"
+            recall_source = "hindsight"
+            message = "Hindsight searched previous incidents but found no relevant historical experience."
     else:
-        # Hindsight RECALL failed (e.g. 401, 402, network error, or offline)
+        memory_status = "unavailable"
         recall_status = "failed"
         recall_source = "hindsight_error"
-        # Keep similar_incidents, previous_root_causes, and previous_resolutions empty
-        # so local SQLite records are not falsely presented as "Hindsight Recalled" memories.
+        message = "This investigation was performed without Hindsight historical memory because Hindsight was unavailable."
 
     # 2. Groq Analysis
     ai_res = await ai_incident_service.aanalyze_incident(
@@ -128,10 +139,11 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         recalled_memories=recalled,
     )
 
+    analysis_status = "success" if ai_res.get("success") else "fallback"
     recommended_action = ai_res.get("recommended_action", "Investigate service logs and system metrics.")
     explanation = ai_res.get("reasoning", "Analysis based on current symptoms and historical incident recall.")
 
-    # Persist the AI recommendation and probable root cause to database if missing or updated
+    # Persist AI recommendation to SQLite
     if recommended_action and incident.ai_recommendation != recommended_action:
         incident.ai_recommendation = recommended_action
         db.commit()
@@ -141,7 +153,7 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         "probable_root_cause": ai_res.get("probable_root_cause"),
         "confidence": ai_res.get("confidence"),
         "reasoning": ai_res.get("reasoning"),
-        "supporting_historical_incidents": ai_res.get("supporting_historical_incidents", []),
+        "supporting_historical_incidents": ai_res.get("supporting_historical_incidents", []) if memory_status == "ok" else [],
     }
 
     return IncidentInvestigationResponse(
@@ -152,6 +164,10 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         ai_analysis=ai_analysis_summary,
         recommended_action=recommended_action,
         explanation=explanation,
+        analysis_status=analysis_status,
+        memory_status=memory_status,
+        message=message,
+        recalled_memories_details=similar_incidents,
         recall_status=recall_status,
         recall_source=recall_source,
     )
@@ -182,6 +198,7 @@ async def create_incident(incident_in: IncidentCreate, db: Session = Depends(get
         severity=incident_in.severity,
         root_cause=incident_in.root_cause,
         resolution=incident_in.resolution,
+        post_mortem=incident_in.post_mortem,
         outcome=incident_in.outcome,
         created_at=now,
         resolved_at=now if is_resolved else None,
@@ -202,6 +219,7 @@ async def create_incident(incident_in: IncidentCreate, db: Session = Depends(get
             severity=incident.severity,
             root_cause=incident.root_cause,
             resolution=incident.resolution,
+            post_mortem=incident.post_mortem,
             outcome=incident.outcome,
         )
         if retain_res.get("success"):
@@ -251,6 +269,7 @@ async def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = De
     )
 
     memories_parsed = []
+    memory_status = "unavailable"
     if result.get("success") and result.get("results") is not None:
         raw_res = result["results"]
         items = []
@@ -258,25 +277,17 @@ async def recall_similar_incidents(query_in: MemoryRecallQuery, db: Session = De
             items = raw_res.get("results", []) or raw_res.get("memories", [])
         elif isinstance(raw_res, list):
             items = raw_res
-        for item in items[:5]:
-            memories_parsed.append(parse_memory_item(item))
-    else:
-        db_resolved = db.query(Incident).filter(Incident.outcome.ilike("resolved")).all()
-        for past in db_resolved[:5]:
-            memories_parsed.append({
-                "incident_id": past.id,
-                "service": past.service,
-                "error": past.error,
-                "symptoms": past.symptoms,
-                "root_cause": past.root_cause or "",
-                "resolution": past.resolution or "",
-                "outcome": past.outcome,
-                "date": past.created_at.isoformat() if past.created_at else "",
-                "raw_text": f"Incident ID: {past.id}\nService: {past.service}\nError: {past.error}\nRoot Cause: {past.root_cause}\nResolution: {past.resolution}",
-            })
+
+        if len(items) > 0:
+            memory_status = "ok"
+            for item in items[:5]:
+                memories_parsed.append(parse_memory_item(item))
+        else:
+            memory_status = "empty"
 
     return {
-        "success": True,
+        "success": result.get("success", False),
+        "memory_status": memory_status,
         "query": full_query,
         "memories": memories_parsed,
         "results": result.get("results"),
@@ -314,6 +325,59 @@ async def analyze_existing_incident(incident_id: str, db: Session = Depends(get_
         )
 
     return await perform_investigation_workflow(incident, db)
+
+@router.post("/{incident_id}/retain")
+@legacy_router.post("/{incident_id}/retain")
+async def retain_incident_memory(incident_id: str, db: Session = Depends(get_db)):
+    incident = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not incident:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Incident '{incident_id}' not found."
+        )
+
+    if incident.outcome.lower() != "resolved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only resolved incidents with verified root cause and resolution can be retained into Hindsight."
+        )
+
+    if not (incident.root_cause or incident.resolution):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incident is missing root cause or resolution information required for memory retention."
+        )
+
+    retain_res = await hindsight_service.aretain_incident(
+        incident_id=incident.id,
+        service=incident.service,
+        error=incident.error,
+        symptoms=incident.symptoms,
+        severity=incident.severity,
+        root_cause=incident.root_cause,
+        resolution=incident.resolution,
+        post_mortem=incident.post_mortem,
+        outcome=incident.outcome,
+    )
+
+    if retain_res.get("success"):
+        incident.memory_retained = True
+        db.commit()
+        db.refresh(incident)
+        return {
+            "success": True,
+            "message": f"Successfully retained memory for incident {incident_id} in Hindsight.",
+            "incident": IncidentResponse.model_validate(incident),
+        }
+    else:
+        incident.memory_retained = False
+        db.commit()
+        db.refresh(incident)
+        return {
+            "success": False,
+            "message": f"Failed to retain memory in Hindsight: {retain_res.get('error')}",
+            "incident": IncidentResponse.model_validate(incident),
+        }
 
 @router.get("/{incident_id}", response_model=IncidentResponse)
 @legacy_router.get("/{incident_id}", response_model=IncidentResponse)
@@ -361,6 +425,7 @@ async def update_incident(
             severity=incident.severity,
             root_cause=incident.root_cause,
             resolution=incident.resolution,
+            post_mortem=incident.post_mortem,
             outcome=incident.outcome,
         )
         if retain_res.get("success"):
@@ -386,6 +451,8 @@ async def resolve_incident(
 
     if resolve_in.root_cause:
         incident.root_cause = resolve_in.root_cause
+    if resolve_in.post_mortem:
+        incident.post_mortem = resolve_in.post_mortem
     incident.resolution = resolve_in.resolution
     incident.outcome = resolve_in.outcome
     incident.resolved_at = datetime.now(timezone.utc)
@@ -403,6 +470,7 @@ async def resolve_incident(
             severity=incident.severity,
             root_cause=incident.root_cause,
             resolution=incident.resolution,
+            post_mortem=incident.post_mortem,
             outcome=incident.outcome,
         )
         if retain_res.get("success"):

@@ -7,7 +7,7 @@ from app.config import settings
 logger = logging.getLogger("incidentiq.hindsight")
 
 def is_insufficient_credits_error(e: Exception) -> bool:
-    """Check if exception represents HTTP 402 Insufficient Credits."""
+    """Check if exception represents HTTP 402 Insufficient Credits or API error."""
     if isinstance(e, ApiException):
         if getattr(e, "status", None) == 402:
             return True
@@ -47,10 +47,12 @@ class HindsightService:
         severity: str,
         root_cause: Optional[str] = None,
         resolution: Optional[str] = None,
+        post_mortem: Optional[str] = None,
         outcome: str = "Resolved",
     ) -> Dict[str, Any]:
         """
         RETAIN (Async): Store a resolved incident and its investigation experience into Hindsight memory.
+        Uses deterministic document_id = incident_id for idempotent retention.
         """
         content_lines = [
             f"Incident ID: {incident_id}",
@@ -64,6 +66,8 @@ class HindsightService:
             content_lines.append(f"Root Cause: {root_cause}")
         if resolution:
             content_lines.append(f"Resolution: {resolution}")
+        if post_mortem:
+            content_lines.append(f"Post-mortem: {post_mortem}")
 
         content_text = "\n".join(content_lines)
 
@@ -202,23 +206,19 @@ class HindsightService:
             if self._client is None:
                 await client.aclose()
 
-    # Backward-compatibility sync aliases for non-async contexts
+    # Sync fallbacks
     def retain_incident(self, *args, **kwargs) -> Dict[str, Any]:
+        import asyncio
         try:
-            import asyncio
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-            if loop and loop.is_running():
-                loop.create_task(self.aretain_incident(*args, **kwargs))
-                return {"success": True, "status": "scheduled"}
-            else:
-                return asyncio.run(self.aretain_incident(*args, **kwargs))
-        except Exception as e:
-            logger.warning(f"Sync retain fallback exception: {e}")
-            return {"success": False, "error": str(e)}
+        if loop and loop.is_running():
+            loop.create_task(self.aretain_incident(*args, **kwargs))
+            return {"success": True, "status": "scheduled"}
+        else:
+            return asyncio.run(self.aretain_incident(*args, **kwargs))
 
     def recall_memories(self, *args, **kwargs) -> Dict[str, Any]:
         import asyncio
