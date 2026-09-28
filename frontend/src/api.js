@@ -1,4 +1,21 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+function getApiBase() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    const hostname = window.location.hostname;
+    // If running in production on Render (or any onrender.com sub-domain)
+    if (hostname.endsWith('.onrender.com')) {
+      if (hostname.includes('-frontend')) {
+        return `https://${hostname.replace('-frontend', '-backend')}`;
+      }
+      return 'https://memoryops-backend.onrender.com';
+    }
+  }
+  return 'http://localhost:8000';
+}
+
+const API_BASE = getApiBase();
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/api/v1/health`);

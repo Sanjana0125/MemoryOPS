@@ -27,6 +27,7 @@ def get_cors_origins() -> list[str]:
         "http://127.0.0.1:3000",
         "http://10.106.114.125:5173",
         "http://10.106.114.125:3000",
+        "https://memoryops-frontend.onrender.com",
     ]
 
 class Settings(BaseModel):
