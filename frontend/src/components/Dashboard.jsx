@@ -220,7 +220,7 @@ export default function Dashboard({ incidents, loading, error, onNavigate, onSel
               </div>
               <div className="flex justify-between py-1.5">
                 <span className="text-slate-400">AI Model</span>
-                <span className="text-indigo-400 font-mono">Groq Llama 3.3 70B</span>
+                <span className="text-indigo-400 font-mono">Groq GPT-OSS 20B</span>
               </div>
             </div>
           </div>

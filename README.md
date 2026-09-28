@@ -94,7 +94,7 @@ MemoryOps uses a decoupled monorepo architecture designed for maintainability an
                                            ▼
                                   ┌──────────────────┐
                                   │   Groq AI LLM    │
-                                  │ (Llama 3.3 70B)  │
+                                  │ (GPT-OSS 20B)    │
                                   └──────────────────┘
 ```
 
