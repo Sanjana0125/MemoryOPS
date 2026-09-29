@@ -23,8 +23,11 @@ from app.ai_service import ai_incident_service
 router = APIRouter(prefix="/api/v1/incidents", tags=["Incidents"])
 legacy_router = APIRouter(prefix="/api/incidents", tags=["Incidents (Legacy Route)"])
 
-def parse_memory_item(item: Any) -> Dict[str, Any]:
-    """Helper to convert Hindsight memory result into structured dict."""
+def parse_memory_item(item: Any, target_incident: Optional[Incident] = None) -> Dict[str, Any]:
+    """
+    Helper to convert Hindsight memory result into structured dict with robust parsing
+    and dynamic relevance scoring.
+    """
     if isinstance(item, dict):
         d = item
     elif hasattr(item, "model_dump"):
@@ -36,14 +39,19 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
 
     text_content = d.get("text") or d.get("content") or str(d)
 
-    incident_id = d.get("incident_id") or d.get("document_id") or ""
-    service = d.get("service") or ""
+    # Extract metadata dictionary if present
+    metadata = d.get("metadata") or {}
+    if isinstance(metadata, str):
+        metadata = {}
+
+    incident_id = d.get("incident_id") or d.get("document_id") or metadata.get("incident_id") or ""
+    service = d.get("service") or metadata.get("service") or ""
     error = d.get("error") or ""
     symptoms = d.get("symptoms") or ""
     root_cause = d.get("root_cause") or ""
     resolution = d.get("resolution") or ""
     post_mortem = d.get("post_mortem") or ""
-    outcome = d.get("outcome") or "Resolved"
+    outcome = d.get("outcome") or metadata.get("outcome") or "Resolved"
     date_str = d.get("created_at") or d.get("date") or ""
 
     lines = text_content.split("\n")
@@ -66,7 +74,32 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
         elif line_clean.startswith("Outcome:"):
             outcome = line_clean.replace("Outcome:", "").strip()
 
-    relevance = f"Historical {service} incident with matching error patterns and resolution procedures."
+    # Calculate dynamic relevance score
+    relevance_score = 0
+    relevance_reasons = []
+
+    if target_incident:
+        if service and service.lower() == target_incident.service.lower():
+            relevance_score += 40
+            relevance_reasons.append(f"Identical service ({service})")
+
+        if error and target_incident.error and (error.lower() in target_incident.error.lower() or target_incident.error.lower() in error.lower()):
+            relevance_score += 35
+            relevance_reasons.append("Matching error signature")
+
+        if root_cause and resolution:
+            relevance_score += 15
+            relevance_reasons.append("Verified root cause & resolution")
+
+        if symptoms and target_incident.symptoms:
+            shared_words = set(symptoms.lower().split()).intersection(set(target_incident.symptoms.lower().split()))
+            # Ignore common stop words
+            significant_words = [w for w in shared_words if len(w) > 3 and w not in ["high", "http", "error", "failed", "service", "with", "from"]]
+            if len(significant_words) >= 2:
+                relevance_score += 10
+                relevance_reasons.append(f"Symptom overlap ({', '.join(significant_words[:3])})")
+
+    relevance_text = " | ".join(relevance_reasons) if relevance_reasons else f"Historical {service or 'system'} incident memory."
 
     return {
         "incident_id": incident_id,
@@ -78,7 +111,8 @@ def parse_memory_item(item: Any) -> Dict[str, Any]:
         "post_mortem": post_mortem,
         "outcome": outcome,
         "date": date_str,
-        "relevance": relevance,
+        "relevance": relevance_text,
+        "relevance_score": relevance_score,
         "raw_text": text_content,
     }
 
@@ -107,18 +141,40 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         elif hasattr(raw_res, "results"):
             items = getattr(raw_res, "results") or []
 
-        if len(items) > 0:
+        parsed_items = []
+        for item in items:
+            parsed = parse_memory_item(item, target_incident=incident)
+
+            # Rule 1: Prevent self-matching - exclude current incident ID from historical recall
+            if parsed["incident_id"] and parsed["incident_id"].upper() == incident.id.upper():
+                continue
+
+            parsed_items.append(parsed)
+
+        # Rule 2: Deduplicate recalled memories using stable incident_id and root_cause/resolution
+        seen_keys = set()
+        deduped_items = []
+        for p in parsed_items:
+            key = (p["incident_id"], p["root_cause"], p["resolution"]) if p["incident_id"] else (p["service"], p["error"], p["root_cause"])
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduped_items.append(p)
+
+        # Rule 3: Rank memories by relevance score descending
+        ranked_items = sorted(deduped_items, key=lambda x: x["relevance_score"], reverse=True)
+
+        if len(ranked_items) > 0:
             memory_status = "ok"
             recall_status = "success"
             recall_source = "hindsight"
-            for item in items[:5]:
-                parsed = parse_memory_item(item)
-                similar_incidents.append(parsed)
-                if parsed["root_cause"] and parsed["root_cause"] not in previous_root_causes:
-                    previous_root_causes.append(parsed["root_cause"])
-                if parsed["resolution"] and parsed["resolution"] not in previous_resolutions:
-                    previous_resolutions.append(parsed["resolution"])
-            message = f"Recalled {len(similar_incidents)} relevant historical memories from Hindsight."
+            for p in ranked_items[:5]:
+                similar_incidents.append(p)
+                # Rule 4: Extract structured evidence correctly
+                if p["root_cause"] and p["root_cause"] not in previous_root_causes:
+                    previous_root_causes.append(p["root_cause"])
+                if p["resolution"] and p["resolution"] not in previous_resolutions:
+                    previous_resolutions.append(p["resolution"])
+            message = f"Recalled {len(similar_incidents)} unique historical memories from Hindsight."
         else:
             memory_status = "empty"
             recall_status = "empty"
@@ -132,13 +188,20 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         err_detail = recalled.get("detail") or ""
         message = f"Hindsight Recall Status: {err_msg}. {err_detail}".strip()
 
+    # Create a filtered recalled_memories structure to pass to Groq AI
+    filtered_recalled = dict(recalled)
+    if memory_status == "ok":
+        filtered_recalled["filtered_memories"] = similar_incidents
+        filtered_recalled["previous_root_causes"] = previous_root_causes
+        filtered_recalled["previous_resolutions"] = previous_resolutions
+
     # 2. Groq Analysis
     ai_res = await ai_incident_service.aanalyze_incident(
         service=incident.service,
         error=incident.error,
         symptoms=incident.symptoms,
         severity=incident.severity,
-        recalled_memories=recalled,
+        recalled_memories=filtered_recalled,
     )
 
     analysis_status = "success" if ai_res.get("success") else "fallback"

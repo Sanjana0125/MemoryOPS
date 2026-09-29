@@ -122,7 +122,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               setSelectedId(e.target.value);
               if (onSelectIncident) onSelectIncident(e.target.value);
             }}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 w-full md:w-80"
+            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 w-full md:w-96"
           >
             {incidents.map((inc) => (
               <option key={inc.id} value={inc.id}>
@@ -297,7 +297,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   <div>
                     <h3 className="text-sm font-bold text-emerald-300">✓ Historical Memory Used</h3>
                     <p className="text-xs text-emerald-200/80">
-                      {investigation.similar_historical_incidents?.length || 0} relevant past incident memories recalled from Hindsight.
+                      {investigation.similar_historical_incidents?.length || 0} unique, non-self relevant historical incident memories recalled from Hindsight.
                     </p>
                   </div>
                 </div>
@@ -312,9 +312,9 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                 <div className="flex items-center gap-3">
                   <Search className="w-6 h-6 text-blue-400 shrink-0" />
                   <div>
-                    <h3 className="text-sm font-bold text-blue-300">○ No Relevant Historical Memory</h3>
+                    <h3 className="text-sm font-bold text-blue-300">○ No Unique Prior Historical Match</h3>
                     <p className="text-xs text-blue-200/80">
-                      Hindsight searched previous incidents but found no sufficiently relevant historical experience for this query.
+                      Hindsight searched previous incidents but found no distinct historical prior precedents for this service/error signature.
                     </p>
                   </div>
                 </div>
@@ -354,7 +354,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                 </div>
                 <span className="text-xs text-purple-300 bg-purple-950 px-3 py-1 rounded-full border border-purple-800 font-mono">
                   {investigation.memory_status === 'ok'
-                    ? `${investigation.similar_historical_incidents?.length || 0} Recalled`
+                    ? `${investigation.similar_historical_incidents?.length || 0} Unique Matches`
                     : investigation.memory_status === 'empty'
                     ? '0 Matches Found'
                     : 'Memory Unavailable'}
@@ -407,7 +407,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   <div className="col-span-2 py-8 text-center text-xs text-slate-400 bg-slate-950 rounded-lg border border-slate-800">
                     {investigation.memory_status === 'unavailable'
                       ? 'Historical memory bank was unavailable during this investigation.'
-                      : 'No matching historical memories found in Hindsight for this query.'}
+                      : 'No unique prior historical memories found in Hindsight for this incident.'}
                   </div>
                 )}
               </div>
@@ -435,7 +435,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500 py-4 text-center">No prior root cause records retrieved.</p>
+                  <p className="text-xs text-slate-500 py-4 text-center">No prior distinct root cause records retrieved.</p>
                 )}
               </div>
             </div>
@@ -455,7 +455,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500 py-4 text-center">No prior resolution records retrieved.</p>
+                  <p className="text-xs text-slate-500 py-4 text-center">No prior distinct resolution records retrieved.</p>
                 )}
               </div>
             </div>
@@ -524,10 +524,10 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               <p className="text-xs text-slate-300 leading-relaxed">
                 {investigation.memory_status === 'unavailable' ? (
                   `Hindsight memory service was unavailable or unconfigured during this investigation. Analysis proceeded using current incident symptoms (${incident.symptoms}) and general SRE troubleshooting knowledge without historical vector memory context.`
-                ) : investigation.memory_status === 'empty' ? (
-                  `No matching historical memories were retrieved from Hindsight for this incident query. Groq AI synthesized this recommendation based strictly on current incident symptoms (${incident.symptoms}) and general SRE/DevOps troubleshooting best practices.`
+                ) : investigation.memory_status === 'empty' || investigation.similar_historical_incidents?.length === 0 ? (
+                  `No unique prior historical memories were retrieved from Hindsight for this incident query. Groq AI synthesized this recommendation based strictly on current incident symptoms (${incident.symptoms}) and general SRE/DevOps troubleshooting best practices.`
                 ) : (
-                  `This recommendation was synthesized by Groq AI by grounding its reasoning in ${investigation.similar_historical_incidents.length} recalled historical incident memories from Hindsight. MemoryOps matched observed symptoms (${incident.symptoms}) against past resolved outages to propose evidence-backed remediation steps.`
+                  `This recommendation was synthesized by Groq AI by grounding its reasoning in ${investigation.similar_historical_incidents.length} unique, non-self historical incident memories recalled from Hindsight. MemoryOps matched observed symptoms (${incident.symptoms}) against past resolved outages to propose evidence-backed remediation steps.`
                 )}
               </p>
 
