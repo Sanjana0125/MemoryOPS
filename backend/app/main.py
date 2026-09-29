@@ -21,7 +21,7 @@ app = FastAPI(
     description="MemoryOps API - AI-powered incident response assistant for DevOps/SRE engineers",
 )
 
-# Register CORSMiddleware
+# Register CORSMiddleware before any routes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
