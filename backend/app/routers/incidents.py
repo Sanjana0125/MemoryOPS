@@ -128,7 +128,9 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         memory_status = "unavailable"
         recall_status = "failed"
         recall_source = "hindsight_error"
-        message = "This investigation was performed without Hindsight historical memory because Hindsight was unavailable."
+        err_msg = recalled.get("error") or "Hindsight service unavailable"
+        err_detail = recalled.get("detail") or ""
+        message = f"Hindsight Recall Status: {err_msg}. {err_detail}".strip()
 
     # 2. Groq Analysis
     ai_res = await ai_incident_service.aanalyze_incident(
@@ -246,6 +248,54 @@ def get_incidents(
         query = query.filter(Incident.outcome.ilike(outcome))
 
     return query.order_by(Incident.created_at.desc()).all()
+
+@router.post("/backfill-hindsight")
+@legacy_router.post("/backfill-hindsight")
+async def backfill_hindsight_memories(db: Session = Depends(get_db)):
+    """
+    Safely backfill all resolved incidents that have root causes and resolutions into Hindsight memory.
+    Uses deterministic document_id deduplication so that existing memories are updated without creating duplicates.
+    """
+    resolved_incidents = db.query(Incident).filter(
+        Incident.outcome.ilike("resolved"),
+        Incident.resolution.isnot(None)
+    ).all()
+
+    total_count = len(resolved_incidents)
+    successful_count = 0
+    failed_count = 0
+    details = []
+
+    for inc in resolved_incidents:
+        res = await hindsight_service.aretain_incident(
+            incident_id=inc.id,
+            service=inc.service,
+            error=inc.error,
+            symptoms=inc.symptoms,
+            severity=inc.severity,
+            root_cause=inc.root_cause,
+            resolution=inc.resolution,
+            post_mortem=inc.post_mortem,
+            outcome=inc.outcome,
+        )
+        if res.get("success"):
+            inc.memory_retained = True
+            successful_count += 1
+            details.append({"incident_id": inc.id, "status": "retained"})
+        else:
+            inc.memory_retained = False
+            failed_count += 1
+            details.append({"incident_id": inc.id, "status": "failed", "error": res.get("error")})
+
+    db.commit()
+
+    return {
+        "success": failed_count == 0 and total_count > 0,
+        "total_eligible_incidents": total_count,
+        "retained_count": successful_count,
+        "failed_count": failed_count,
+        "details": details,
+    }
 
 @router.post("/recall")
 @legacy_router.post("/recall")
@@ -376,6 +426,7 @@ async def retain_incident_memory(incident_id: str, db: Session = Depends(get_db)
         return {
             "success": False,
             "message": f"Failed to retain memory in Hindsight: {retain_res.get('error')}",
+            "detail": retain_res.get('detail'),
             "incident": IncidentResponse.model_validate(incident),
         }
 
