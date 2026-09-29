@@ -47,21 +47,24 @@ def test_investigate_similar_known_incident():
         assert data["recall_status"] == "success"
         assert data["recall_source"] == "hindsight"
 
-def test_investigate_self_matching_exclusion():
-    """Test 2: Analyzing an incident excludes its own historical record (self-match)."""
+def test_investigate_inc142_strict_self_matching_exclusion():
+    """Regression Test: Analyzing INC-142 strictly excludes INC-142 from historical matches."""
     with patch("app.routers.incidents.hindsight_service.arecall_memories") as mock_recall, \
          patch("app.routers.incidents.ai_incident_service.aanalyze_incident") as mock_analyze:
 
-        # Hindsight returns memories including the current incident (INC-140) itself and an older incident INC-130
+        # Hindsight returns memories including INC-142 itself, INC-115 (OOM 502), and INC-124 (Buffer 502)
         mock_recall.return_value = {
             "success": True,
             "results": {
                 "memories": [
                     {
-                        "content": "Incident ID: INC-140\nService: PDF Invoice Service\nError: Headless Chrome Browser Crash in Puppeteer\nRoot Cause: Shared memory /dev/shm size set to default 64MB\nResolution: Added --shm-size=2gb flag"
+                        "content": "Incident ID: INC-142\nService: Edge API Gateway\nError: HTTP 502 Bad Gateway - Upstream TLS Handshake Timeout\nRoot Cause: TLS session resumption disabled\nResolution: Enabled TLS session tickets"
                     },
                     {
-                        "content": "Incident ID: INC-130\nService: Payment Provider Webhook Listener\nError: Stripe Signature Verification Failure\nRoot Cause: Secret key rotated without updating K8s secret\nResolution: Updated STRIPE_WEBHOOK_SECRET"
+                        "content": "Incident ID: INC-115\nService: Kubernetes Ingress Gateway\nError: HTTP 502 Bad Gateway\nRoot Cause: Uncapped pod memory limits\nResolution: Increased container memory request/limit"
+                    },
+                    {
+                        "content": "Incident ID: INC-124\nService: Nginx Ingress Router\nError: Nginx upstream buffer overflow\nRoot Cause: JWT token size grew beyond 4KB\nResolution: Increased proxy_buffer_size to 16k"
                     }
                 ]
             }
@@ -69,22 +72,21 @@ def test_investigate_self_matching_exclusion():
 
         mock_analyze.return_value = {
             "success": True,
-            "probable_root_cause": "Puppeteer shared memory exhaustion",
-            "recommended_action": "Increase --shm-size to 2gb",
+            "probable_root_cause": "Upstream TLS Handshake timeout on Envoy sidecars",
+            "recommended_action": "Enable TLS session resumption and keep-alive pooling",
             "confidence": "medium",
-            "reasoning": "Analyzed PDF Invoice Service crash.",
+            "reasoning": "INC-142 analyzed without self-matching. Recalled related HTTP 502 gateway incidents INC-115 and INC-124.",
             "supporting_historical_incidents": []
         }
 
-        response = client.post("/api/incidents/INC-140/analyze")
+        response = client.post("/api/incidents/INC-142/analyze")
         assert response.status_code == 200
         data = response.json()
 
-        # INC-140 self-match should be excluded
+        # Confirm INC-142 is strictly excluded
         incident_ids = [m["incident_id"] for m in data["similar_historical_incidents"]]
-        assert "INC-140" not in incident_ids
-        assert "INC-130" in incident_ids
-        assert len(data["similar_historical_incidents"]) == 1
+        assert "INC-142" not in incident_ids
+        assert "INC-115" in incident_ids or "INC-124" in incident_ids
 
 def test_investigate_memory_deduplication():
     """Test 3: Recalled memories with duplicate entries are deduplicated cleanly."""

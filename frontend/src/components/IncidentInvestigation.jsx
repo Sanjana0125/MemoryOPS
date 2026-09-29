@@ -122,11 +122,11 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               setSelectedId(e.target.value);
               if (onSelectIncident) onSelectIncident(e.target.value);
             }}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 w-full md:w-96"
+            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 w-full md:w-[420px]"
           >
             {incidents.map((inc) => (
               <option key={inc.id} value={inc.id}>
-                {inc.id} - {inc.service} ({inc.outcome})
+                [{inc.id}] {inc.service} — {inc.outcome}
               </option>
             ))}
           </select>
@@ -290,14 +290,14 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
 
           {/* EXPLICIT MEMORY STATUS BANNER (STATE 1, 2, 3) */}
           <div className="space-y-4">
-            {investigation.memory_status === 'ok' && (
+            {investigation.memory_status === 'ok' && investigation.similar_historical_incidents?.length > 0 && (
               <div className="bg-emerald-950/50 border border-emerald-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm text-emerald-200">
                 <div className="flex items-center gap-3">
                   <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
                   <div>
                     <h3 className="text-sm font-bold text-emerald-300">✓ Historical Memory Used</h3>
                     <p className="text-xs text-emerald-200/80">
-                      {investigation.similar_historical_incidents?.length || 0} unique, non-self relevant historical incident memories recalled from Hindsight.
+                      {investigation.similar_historical_incidents.length} unique, non-self relevant historical incident memories recalled from Hindsight.
                     </p>
                   </div>
                 </div>
@@ -307,14 +307,14 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               </div>
             )}
 
-            {investigation.memory_status === 'empty' && (
+            {(investigation.memory_status === 'empty' || (investigation.memory_status === 'ok' && investigation.similar_historical_incidents?.length === 0)) && (
               <div className="bg-slate-900 border border-blue-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm text-blue-200">
                 <div className="flex items-center gap-3">
                   <Search className="w-6 h-6 text-blue-400 shrink-0" />
                   <div>
                     <h3 className="text-sm font-bold text-blue-300">○ No Unique Prior Historical Match</h3>
                     <p className="text-xs text-blue-200/80">
-                      Hindsight searched previous incidents but found no distinct historical prior precedents for this service/error signature.
+                      Hindsight searched previous incidents but found no distinct historical prior precedents for this service or error signature.
                     </p>
                   </div>
                 </div>
@@ -353,11 +353,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   </h3>
                 </div>
                 <span className="text-xs text-purple-300 bg-purple-950 px-3 py-1 rounded-full border border-purple-800 font-mono">
-                  {investigation.memory_status === 'ok'
-                    ? `${investigation.similar_historical_incidents?.length || 0} Unique Matches`
-                    : investigation.memory_status === 'empty'
-                    ? '0 Matches Found'
-                    : 'Memory Unavailable'}
+                  {investigation.similar_historical_incidents?.length || 0} Unique Historical Matches
                 </span>
               </div>
 
@@ -403,7 +399,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   </div>
                 ))}
 
-                {investigation.similar_historical_incidents?.length === 0 && (
+                {(!investigation.similar_historical_incidents || investigation.similar_historical_incidents.length === 0) && (
                   <div className="col-span-2 py-8 text-center text-xs text-slate-400 bg-slate-950 rounded-lg border border-slate-800">
                     {investigation.memory_status === 'unavailable'
                       ? 'Historical memory bank was unavailable during this investigation.'
@@ -487,7 +483,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   investigation.ai_analysis?.confidence === 'medium' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
                   'bg-slate-800 text-slate-300 border border-slate-700'
                 }`}>
-                  Confidence: {investigation.ai_analysis?.confidence || 'medium'}
+                  Confidence: {investigation.ai_analysis?.confidence || 'low'}
                 </span>
               </div>
             </div>
@@ -524,7 +520,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               <p className="text-xs text-slate-300 leading-relaxed">
                 {investigation.memory_status === 'unavailable' ? (
                   `Hindsight memory service was unavailable or unconfigured during this investigation. Analysis proceeded using current incident symptoms (${incident.symptoms}) and general SRE troubleshooting knowledge without historical vector memory context.`
-                ) : investigation.memory_status === 'empty' || investigation.similar_historical_incidents?.length === 0 ? (
+                ) : investigation.memory_status === 'empty' || !investigation.similar_historical_incidents || investigation.similar_historical_incidents.length === 0 ? (
                   `No unique prior historical memories were retrieved from Hindsight for this incident query. Groq AI synthesized this recommendation based strictly on current incident symptoms (${incident.symptoms}) and general SRE/DevOps troubleshooting best practices.`
                 ) : (
                   `This recommendation was synthesized by Groq AI by grounding its reasoning in ${investigation.similar_historical_incidents.length} unique, non-self historical incident memories recalled from Hindsight. MemoryOps matched observed symptoms (${incident.symptoms}) against past resolved outages to propose evidence-backed remediation steps.`

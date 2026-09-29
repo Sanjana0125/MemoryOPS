@@ -28,15 +28,17 @@ def test_ai_service_analyze_incident_success():
     service._client = mock_groq_client
 
     with patch("app.ai_service.hindsight_service.recall_memories") as mock_recall:
-        mock_recall.return_value = {
+        recalled = {
             "success": True,
-            "results": {"memories": [{"id": "INC-101"}]}
+            "results": {"memories": [{"incident_id": "INC-101"}]},
+            "filtered_memories": [{"incident_id": "INC-101", "relevance_score": 80}]
         }
 
         res = service.analyze_incident(
             service="Payment API",
             error="Connection timeout",
-            symptoms="HTTP 504 Gateway Timeout"
+            symptoms="HTTP 504 Gateway Timeout",
+            recalled_memories=recalled
         )
 
         assert res["success"] is True
