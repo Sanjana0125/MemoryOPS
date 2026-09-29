@@ -21,9 +21,7 @@ DEFAULT_DB_PATH = (data_dir / "incidentiq.db").resolve()
 
 def get_cors_origins() -> list[str]:
     cors_env = os.getenv("CORS_ORIGINS")
-    if cors_env:
-        return [origin.strip() for origin in cors_env.split(",") if origin.strip()]
-    return [
+    origins = [
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
@@ -32,6 +30,12 @@ def get_cors_origins() -> list[str]:
         "http://10.106.114.125:3000",
         "https://memoryops-frontend.onrender.com",
     ]
+    if cors_env:
+        for o in cors_env.split(","):
+            cleaned = o.strip().rstrip("/")
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+    return origins
 
 class Settings(BaseModel):
     PROJECT_NAME: str = "MemoryOps API"

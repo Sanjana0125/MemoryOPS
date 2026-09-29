@@ -21,13 +21,16 @@ app = FastAPI(
     description="MemoryOps API - AI-powered incident response assistant for DevOps/SRE engineers",
 )
 
+# Register CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 app.include_router(incidents.router)
