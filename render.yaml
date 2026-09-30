@@ -12,7 +12,7 @@ services:
       - key: DATABASE_URL
         value: "sqlite:///../data/incidentiq.db"
       - key: GROQ_MODEL
-        value: "openai/gpt-oss-20b"
+        value: "llama-3.1-8b-instant"
       - key: GROQ_API_KEY
         sync: false
       - key: HINDSIGHT_API_URL
@@ -21,6 +21,8 @@ services:
         sync: false
       - key: HINDSIGHT_BANK_ID
         value: "memoryops"
+      - key: CORS_ORIGINS
+        value: "https://memoryops-frontend.onrender.com"
 
   - type: web
     name: memoryops-frontend
@@ -29,6 +31,9 @@ services:
     plan: free
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "./frontend/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "https://memoryops-backend.onrender.com"
     routes:
       - type: rewrite
         source: "/*"
