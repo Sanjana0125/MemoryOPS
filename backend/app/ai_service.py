@@ -10,11 +10,15 @@ logger = logging.getLogger("incidentiq.ai_service")
 SYSTEM_PROMPT = """You are MemoryOps AI, an expert SRE/DevOps incident response assistant.
 Your task is to analyze an incoming IT/DevOps incident using recalled historical incident memories from Hindsight.
 
-CRITICAL INSTRUCTIONS:
-1. Distinguish clearly between historical evidence (retrieved from Hindsight memories) and your own AI analysis/reasoning.
+CRITICAL INSTRUCTIONS FOR AI GROUNDING & REASONING:
+1. Distinguish clearly between verified historical facts (retrieved from Hindsight memories) and your own AI analysis/hypotheses.
 2. NEVER invent or fabricate historical incidents or incident IDs. Only reference historical incidents that are explicitly present in the provided RECALLED HISTORICAL MEMORIES.
-3. If no relevant historical incidents exist or match, explicitly state that no historical incidents were found in Hindsight and base your analysis solely on general DevOps best practices.
-4. Return your output STRICTLY as a valid JSON object matching this exact schema:
+3. Determine confidence strictly based on evidence quality:
+   - "high": High relevance historical match exists with identical or near-identical service/error signatures and verified resolution.
+   - "medium": Moderate historical match exists or partial error pattern overlap.
+   - "low": No relevant historical memories exist, or only weak symptom overlap exists across unrelated services.
+4. If no relevant historical incidents exist or match, explicitly state that no historical incidents were found in Hindsight and base your analysis solely on general DevOps best practices with "low" or "medium" confidence.
+5. Return your output STRICTLY as a valid JSON object matching this exact schema:
 {
   "probable_root_cause": "Detailed explanation of the probable root cause",
   "recommended_action": "Specific step-by-step remediation or investigation steps",
@@ -69,19 +73,24 @@ class AIIncidentService:
         memory_status = "unavailable"
         memories_text = "No historical memories retrieved because Hindsight memory was unavailable."
 
+        filtered_items = []
+        if recalled_memories and isinstance(recalled_memories, dict):
+            filtered_items = recalled_memories.get("filtered_memories", [])
+
         if recalled_memories and recalled_memories.get("success") and recalled_memories.get("results") is not None:
             raw_res = recalled_memories["results"]
-            items = []
-            if isinstance(raw_res, dict):
-                items = raw_res.get("results", []) or raw_res.get("memories", [])
-            elif isinstance(raw_res, list):
-                items = raw_res
-            elif hasattr(raw_res, "results"):
-                items = getattr(raw_res, "results") or []
+            items = filtered_items if filtered_items else []
+            if not items:
+                if isinstance(raw_res, dict):
+                    items = raw_res.get("results", []) or raw_res.get("memories", [])
+                elif isinstance(raw_res, list):
+                    items = raw_res
+                elif hasattr(raw_res, "results"):
+                    items = getattr(raw_res, "results") or []
 
-            if len(items) > 0 or raw_res:
-                memory_status = "ok" if len(items) > 0 else "empty"
-                memories_text = str(raw_res) if len(items) > 0 else "Hindsight search succeeded, but no relevant historical memories were found."
+            if len(items) > 0:
+                memory_status = "ok"
+                memories_text = json.dumps(items, indent=2)
             else:
                 memory_status = "empty"
                 memories_text = "Hindsight search succeeded, but no relevant historical memories were found."
@@ -125,9 +134,9 @@ Analyze the current incident now and respond strictly with the JSON schema reque
                 "error": error,
                 "probable_root_cause": parsed.get("probable_root_cause", "Unknown root cause"),
                 "recommended_action": parsed.get("recommended_action", "Investigate service logs"),
-                "confidence": parsed.get("confidence", "medium"),
+                "confidence": parsed.get("confidence", "medium" if memory_status == "ok" else "low"),
                 "reasoning": parsed.get("reasoning", "Analysis generated from incident details"),
-                "supporting_historical_incidents": supporting,
+                "supporting_historical_incidents": supporting if memory_status == "ok" else [],
                 "recalled_memories_used": recalled_memories if memory_status != "unavailable" else None,
             }
 
@@ -203,7 +212,7 @@ Analyze the current incident now and respond strictly with the JSON schema reque
             "recommended_action": f"Check logs and metrics for '{service}'. Verify database/network connection and service health.",
             "confidence": "low",
             "reasoning": f"Fallback rule-based heuristic applied because AI analysis was unavailable ({error_msg}).",
-            "supporting_historical_incidents": supporting,
+            "supporting_historical_incidents": supporting if memory_status == "ok" else [],
             "recalled_memories_used": recalled_memories,
         }
 
