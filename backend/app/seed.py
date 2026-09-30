@@ -600,22 +600,28 @@ async def aseed_incidents(db: Session) -> None:
             if data.get("post_mortem") and not existing.post_mortem:
                 existing.post_mortem = data.get("post_mortem")
                 db.commit()
-            incident = existing
 
-        if incident.outcome.lower() == "resolved" and (incident.root_cause or incident.resolution) and not incident.memory_retained:
+    # Retain all eligible resolved incidents in SQLite that are pending retention
+    unretained_resolved = db.query(Incident).filter(
+        Incident.outcome.ilike("resolved"),
+        Incident.memory_retained == False,
+    ).all()
+
+    for inc in unretained_resolved:
+        if inc.root_cause or inc.resolution:
             retain_res = await hindsight_service.aretain_incident(
-                incident_id=incident.id,
-                service=incident.service,
-                error=incident.error,
-                symptoms=incident.symptoms,
-                severity=incident.severity,
-                root_cause=incident.root_cause,
-                resolution=incident.resolution,
-                post_mortem=incident.post_mortem,
-                outcome=incident.outcome,
+                incident_id=inc.id,
+                service=inc.service,
+                error=inc.error,
+                symptoms=inc.symptoms,
+                severity=inc.severity,
+                root_cause=inc.root_cause,
+                resolution=inc.resolution,
+                post_mortem=inc.post_mortem,
+                outcome=inc.outcome,
             )
             if retain_res.get("success"):
-                incident.memory_retained = True
+                inc.memory_retained = True
                 db.commit()
 
 def seed_incidents(db: Session) -> None:

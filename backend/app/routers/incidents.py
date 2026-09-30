@@ -1,5 +1,4 @@
 import uuid
-import re
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -24,10 +23,11 @@ from app.ai_service import ai_incident_service
 router = APIRouter(prefix="/api/v1/incidents", tags=["Incidents"])
 legacy_router = APIRouter(prefix="/api/incidents", tags=["Incidents (Legacy Route)"])
 
+
 def parse_memory_item(item: Any, target_incident: Optional[Incident] = None) -> Dict[str, Any]:
     """
-    Helper to convert Hindsight memory result into structured dict with robust parsing,
-    strict self-match identification, and dynamic relevance scoring.
+    Helper to convert Hindsight memory result into structured dict with robust parsing
+    and dynamic relevance scoring.
     """
     if isinstance(item, dict):
         d = item
@@ -47,11 +47,11 @@ def parse_memory_item(item: Any, target_incident: Optional[Incident] = None) -> 
 
     incident_id = d.get("incident_id") or d.get("document_id") or metadata.get("incident_id") or ""
     service = d.get("service") or metadata.get("service") or ""
-    error = d.get("error") or ""
-    symptoms = d.get("symptoms") or ""
-    root_cause = d.get("root_cause") or ""
-    resolution = d.get("resolution") or ""
-    post_mortem = d.get("post_mortem") or ""
+    error = d.get("error") or metadata.get("error") or ""
+    symptoms = d.get("symptoms") or metadata.get("symptoms") or ""
+    root_cause = d.get("root_cause") or metadata.get("root_cause") or ""
+    resolution = d.get("resolution") or metadata.get("resolution") or ""
+    post_mortem = d.get("post_mortem") or metadata.get("post_mortem") or ""
     outcome = d.get("outcome") or metadata.get("outcome") or "Resolved"
     date_str = d.get("created_at") or d.get("date") or ""
 
@@ -59,69 +59,64 @@ def parse_memory_item(item: Any, target_incident: Optional[Incident] = None) -> 
     for line in lines:
         line_clean = line.strip()
         if line_clean.startswith("Incident ID:"):
-            incident_id = line_clean.replace("Incident ID:", "").strip()
+            parsed_id = line_clean.replace("Incident ID:", "").strip()
+            if parsed_id:
+                incident_id = parsed_id
         elif line_clean.startswith("Service:"):
-            service = line_clean.replace("Service:", "").strip()
+            parsed_svc = line_clean.replace("Service:", "").strip()
+            if parsed_svc:
+                service = parsed_svc
         elif line_clean.startswith("Error:"):
-            error = line_clean.replace("Error:", "").strip()
+            parsed_err = line_clean.replace("Error:", "").strip()
+            if parsed_err:
+                error = parsed_err
         elif line_clean.startswith("Symptoms:"):
-            symptoms = line_clean.replace("Symptoms:", "").strip()
+            parsed_sym = line_clean.replace("Symptoms:", "").strip()
+            if parsed_sym:
+                symptoms = parsed_sym
         elif line_clean.startswith("Root Cause:"):
-            root_cause = line_clean.replace("Root Cause:", "").strip()
+            parsed_rc = line_clean.replace("Root Cause:", "").strip()
+            if parsed_rc:
+                root_cause = parsed_rc
         elif line_clean.startswith("Resolution:"):
-            resolution = line_clean.replace("Resolution:", "").strip()
+            parsed_res = line_clean.replace("Resolution:", "").strip()
+            if parsed_res:
+                resolution = parsed_res
         elif line_clean.startswith("Post-mortem:"):
-            post_mortem = line_clean.replace("Post-mortem:", "").strip()
+            parsed_pm = line_clean.replace("Post-mortem:", "").strip()
+            if parsed_pm:
+                post_mortem = parsed_pm
         elif line_clean.startswith("Outcome:"):
-            outcome = line_clean.replace("Outcome:", "").strip()
+            parsed_out = line_clean.replace("Outcome:", "").strip()
+            if parsed_out:
+                outcome = parsed_out
 
-    # Calculate dynamic relevance score and detailed match reasoning
+    # Calculate dynamic relevance score
     relevance_score = 0
     relevance_reasons = []
-    differences_noted = []
 
     if target_incident:
-        # Check service similarity
         if service and service.lower() == target_incident.service.lower():
             relevance_score += 40
-            relevance_reasons.append(f"Same service ({service})")
-        elif service:
-            differences_noted.append(f"Different service ({service} vs {target_incident.service})")
+            relevance_reasons.append(f"Identical service ({service})")
 
-        # Check error signature similarity
-        if error and target_incident.error:
-            err_a = error.lower()
-            err_b = target_incident.error.lower()
-            if err_a == err_b:
-                relevance_score += 40
-                relevance_reasons.append("Identical error signature")
-            elif ("tls" in err_a and "tls" in err_b) or ("database" in err_a and "database" in err_b) or ("oom" in err_a and "oom" in err_b):
-                relevance_score += 25
-                relevance_reasons.append("Matching error domain")
-            elif "502" in err_a and "502" in err_b:
-                relevance_score += 10
-                relevance_reasons.append("Shared HTTP 502 status code")
-                differences_noted.append("Different underlying root cause mechanism")
+        if error and target_incident.error and (error.lower() in target_incident.error.lower() or target_incident.error.lower() in error.lower()):
+            relevance_score += 35
+            relevance_reasons.append("Matching error signature")
 
-        # Check verified resolution presence
         if root_cause and resolution:
             relevance_score += 15
             relevance_reasons.append("Verified root cause & resolution")
 
-        # Check symptom overlap
         if symptoms and target_incident.symptoms:
-            shared_words = set(re.findall(r'\b\w{4,}\b', symptoms.lower())).intersection(
-                set(re.findall(r'\b\w{4,}\b', target_incident.symptoms.lower()))
-            )
-            stop_words = {"high", "http", "error", "errors", "failed", "failing", "service", "with", "from", "during", "requests", "request"}
-            sig_words = [w for w in shared_words if w not in stop_words]
-            if sig_words:
-                relevance_score += 5
-                relevance_reasons.append(f"Symptom overlap ({', '.join(sig_words[:2])})")
+            stop_words = {"high", "http", "error", "errors", "failed", "failing", "service", "services", "with", "from", "during", "requests", "request", "execution", "system", "process", "status", "state"}
+            shared_words = set(symptoms.lower().split()).intersection(set(target_incident.symptoms.lower().split()))
+            significant_words = [w for w in shared_words if len(w) > 3 and w not in stop_words]
+            if len(significant_words) >= 2:
+                relevance_score += 10
+                relevance_reasons.append(f"Symptom overlap ({', '.join(significant_words[:3])})")
 
     relevance_text = " | ".join(relevance_reasons) if relevance_reasons else f"Historical {service or 'system'} incident memory."
-    if differences_noted and relevance_reasons:
-        relevance_text += f" (Note: {'; '.join(differences_noted)})"
 
     return {
         "incident_id": incident_id,
@@ -136,7 +131,95 @@ def parse_memory_item(item: Any, target_incident: Optional[Incident] = None) -> 
         "relevance": relevance_text,
         "relevance_score": relevance_score,
         "raw_text": text_content,
+        "source": "hindsight",
     }
+
+
+def search_sqlite_fallback(
+    target_incident: Incident,
+    db: Session,
+    limit: int = 5
+) -> List[Dict[str, Any]]:
+    """
+    Intelligent SQLite database fallback when Hindsight vector recall is unavailable or returns no items.
+    Searches resolved incidents in SQLite for matching service or overlapping error/symptoms,
+    strictly excluding target_incident itself.
+    """
+    resolved_incidents = db.query(Incident).filter(
+        Incident.outcome.ilike("resolved"),
+        Incident.id != target_incident.id,
+    ).all()
+
+    scored = []
+    target_service = (target_incident.service or "").lower()
+    target_error = (target_incident.error or "").lower()
+    target_symptoms = (target_incident.symptoms or "").lower()
+
+    stop_words = {"high", "http", "error", "errors", "failed", "failing", "service", "services", "with", "from", "during", "requests", "request", "execution", "system", "process", "status", "state", "issue", "cause", "anomaly"}
+
+    for inc in resolved_incidents:
+        if not (inc.root_cause or inc.resolution):
+            continue
+
+        score = 0
+        reasons = []
+        inc_service = (inc.service or "").lower()
+        inc_error = (inc.error or "").lower()
+        inc_symptoms = (inc.symptoms or "").lower()
+
+        # Service match
+        if inc_service and inc_service == target_service:
+            score += 40
+            reasons.append(f"Identical service ({inc.service})")
+        elif inc_service and (inc_service in target_service or target_service in inc_service):
+            score += 25
+            reasons.append(f"Related service ({inc.service})")
+
+        # Error signature match / substring overlap
+        if inc_error and target_error:
+            if inc_error == target_error:
+                score += 35
+                reasons.append("Identical error signature")
+            elif inc_error in target_error or target_error in inc_error:
+                score += 25
+                reasons.append("Matching error signature")
+            else:
+                domain_terms = ["database", "connection", "timeout", "pool", "auth", "tls", "oom", "kafka", "redis", "http 502", "http 500", "http 504", "queue", "cert"]
+                matched_terms = [t for t in domain_terms if t in inc_error and t in target_error]
+                if matched_terms:
+                    score += 20
+                    reasons.append(f"Matching error domain ({', '.join(matched_terms[:2])})")
+
+        # Symptom word overlap
+        if inc_symptoms and target_symptoms:
+            inc_words = set([w for w in inc_symptoms.split() if len(w) > 3])
+            target_words = set([w for w in target_symptoms.split() if len(w) > 3])
+            shared = inc_words.intersection(target_words)
+            sig_words = [w for w in shared if w not in stop_words]
+            if len(sig_words) >= 2:
+                score += 15
+                reasons.append(f"Symptom overlap ({', '.join(sig_words[:3])})")
+
+        if score >= 25:
+            relevance_text = " | ".join(reasons) if reasons else "Matched historical database record."
+            scored.append({
+                "incident_id": inc.id,
+                "service": inc.service,
+                "error": inc.error,
+                "symptoms": inc.symptoms,
+                "root_cause": inc.root_cause,
+                "resolution": inc.resolution,
+                "post_mortem": inc.post_mortem,
+                "outcome": inc.outcome,
+                "date": inc.created_at.isoformat() if inc.created_at else "",
+                "relevance": relevance_text,
+                "relevance_score": score,
+                "raw_text": f"Incident ID: {inc.id}\nService: {inc.service}\nError: {inc.error}\nSymptoms: {inc.symptoms}\nRoot Cause: {inc.root_cause}\nResolution: {inc.resolution}",
+                "source": "sqlite_fallback",
+            })
+
+    ranked = sorted(scored, key=lambda x: x["relevance_score"], reverse=True)
+    return ranked[:limit]
 
 
 async def perform_investigation_workflow(incident: Incident, db: Session) -> IncidentInvestigationResponse:
@@ -148,51 +231,42 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
     previous_root_causes: List[str] = []
     previous_resolutions: List[str] = []
 
-    memory_status = "unavailable"
-    recall_status = "failed"
-    recall_source = "hindsight_error"
-    message = "Historical memory unavailable during investigation."
+    hindsight_success = recalled.get("success") is True and recalled.get("results") is not None
 
-    if recalled.get("success") and recalled.get("results") is not None:
+    if hindsight_success:
         raw_res = recalled["results"]
-        items = []
+        hindsight_items = []
         if isinstance(raw_res, dict):
-            items = raw_res.get("results", []) or raw_res.get("memories", [])
+            hindsight_items = raw_res.get("results", []) or raw_res.get("memories", [])
         elif isinstance(raw_res, list):
-            items = raw_res
+            hindsight_items = raw_res
         elif hasattr(raw_res, "results"):
-            items = getattr(raw_res, "results") or []
+            hindsight_items = getattr(raw_res, "results") or []
 
         parsed_items = []
         target_id_upper = incident.id.upper()
-
-        for item in items:
+        for item in hindsight_items:
             parsed = parse_memory_item(item, target_incident=incident)
 
-            # STRICT SELF-MATCH EXCLUSION: Check incident_id, text content, and metadata for target incident ID
-            m_id = parsed["incident_id"].upper() if parsed["incident_id"] else ""
-            raw_text = parsed["raw_text"].upper()
-
-            if m_id == target_id_upper or f"INCIDENT ID: {target_id_upper}" in raw_text or f"INCIDENT ID: {target_id_upper}\n" in raw_text:
+            # Rule 1: Exclude current incident ID (self-match)
+            p_id = parsed["incident_id"].upper() if parsed["incident_id"] else ""
+            raw_upper = parsed["raw_text"].upper()
+            if p_id == target_id_upper or f"INCIDENT ID: {target_id_upper}" in raw_upper or f"INCIDENT ID: {target_id_upper}\n" in raw_upper:
                 continue
 
             parsed_items.append(parsed)
 
-        # Deduplicate recalled memories using stable incident_id and root_cause/resolution
+        # Rule 2: Deduplicate
         seen_keys = set()
         deduped_items = []
         for p in parsed_items:
-            # Stable key combines incident_id or service/error with root cause
-            key = (p["incident_id"].upper(), p["root_cause"].strip(), p["resolution"].strip()) if p["incident_id"] else (p["service"].lower(), p["error"].lower(), p["root_cause"].strip())
+            key = (p["incident_id"], p["root_cause"], p["resolution"]) if p["incident_id"] else (p["service"], p["error"], p["root_cause"])
             if key not in seen_keys:
                 seen_keys.add(key)
                 deduped_items.append(p)
 
-        # Filter out memories with negligible relevance score (< 15) unless service matches
-        meaningful_items = [p for p in deduped_items if p["relevance_score"] >= 15 or (p["service"] and p["service"].lower() == incident.service.lower())]
-
-        # Rank memories by relevance score descending
-        ranked_items = sorted(meaningful_items, key=lambda x: x["relevance_score"], reverse=True)
+        # Rule 3: Rank memories by relevance score descending
+        ranked_items = sorted(deduped_items, key=lambda x: x["relevance_score"], reverse=True)
 
         if len(ranked_items) > 0:
             memory_status = "ok"
@@ -200,18 +274,32 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
             recall_source = "hindsight"
             for p in ranked_items[:5]:
                 similar_incidents.append(p)
-                # Extract structured evidence from verified historical records
                 if p["root_cause"] and p["root_cause"] not in previous_root_causes:
                     previous_root_causes.append(p["root_cause"])
                 if p["resolution"] and p["resolution"] not in previous_resolutions:
                     previous_resolutions.append(p["resolution"])
             message = f"Recalled {len(similar_incidents)} unique historical memories from Hindsight."
         else:
-            memory_status = "empty"
-            recall_status = "empty"
-            recall_source = "hindsight"
-            message = "Hindsight searched previous incidents but found no relevant historical experience for this query."
+            # Hindsight search succeeded but returned 0 vector matches -> SQLite Fallback
+            fallback_items = search_sqlite_fallback(target_incident=incident, db=db, limit=5)
+            if fallback_items:
+                memory_status = "sqlite_fallback"
+                recall_status = "fallback"
+                recall_source = "sqlite_fallback"
+                for p in fallback_items:
+                    similar_incidents.append(p)
+                    if p["root_cause"] and p["root_cause"] not in previous_root_causes:
+                        previous_root_causes.append(p["root_cause"])
+                    if p["resolution"] and p["resolution"] not in previous_resolutions:
+                        previous_resolutions.append(p["resolution"])
+                message = f"Hindsight returned no direct vector matches. Retrieved {len(similar_incidents)} relevant historical records from database fallback."
+            else:
+                memory_status = "empty"
+                recall_status = "empty"
+                recall_source = "hindsight"
+                message = "Hindsight searched previous incidents but found no relevant historical experience."
     else:
+        # Hindsight RECALL failed / unavailable / unconfigured / insufficient credits
         memory_status = "unavailable"
         recall_status = "failed"
         recall_source = "hindsight_error"
@@ -219,20 +307,13 @@ async def perform_investigation_workflow(incident: Incident, db: Session) -> Inc
         err_detail = recalled.get("detail") or ""
         message = f"Hindsight Recall Status: {err_msg}. {err_detail}".strip()
 
-    # Create a filtered recalled_memories structure to pass to Groq AI
-    filtered_recalled = dict(recalled)
-    if memory_status == "ok":
-        filtered_recalled["filtered_memories"] = similar_incidents
-        filtered_recalled["previous_root_causes"] = previous_root_causes
-        filtered_recalled["previous_resolutions"] = previous_resolutions
-
     # 2. Groq Analysis
     ai_res = await ai_incident_service.aanalyze_incident(
         service=incident.service,
         error=incident.error,
         symptoms=incident.symptoms,
         severity=incident.severity,
-        recalled_memories=filtered_recalled,
+        recalled_memories=recalled,
     )
 
     analysis_status = "success" if ai_res.get("success") else "fallback"

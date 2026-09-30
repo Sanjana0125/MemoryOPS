@@ -13,13 +13,12 @@ Your task is to analyze an incoming IT/DevOps incident using recalled historical
 CRITICAL INSTRUCTIONS FOR AI GROUNDING & REASONING:
 1. Distinguish clearly between verified historical facts (retrieved from Hindsight memories) and your own AI analysis/hypotheses.
 2. NEVER invent or fabricate historical incidents or incident IDs. Only reference historical incidents that are explicitly present in the provided RECALLED HISTORICAL MEMORIES.
-3. NEVER refer to the current incident being analyzed as a historical precedent.
-4. Determine confidence strictly based on evidence quality:
+3. Determine confidence strictly based on evidence quality:
    - "high": High relevance historical match exists with identical or near-identical service/error signatures and verified resolution.
-   - "medium": Moderate historical match exists or partial error pattern overlap across related services.
-   - "low": No relevant historical memories exist, or only weak generic symptom overlap exists across completely unrelated services.
-5. If no relevant historical incidents exist or match, explicitly state that no relevant prior resolutions were found in Hindsight and base your analysis solely on current symptoms and general SRE best practices with "low" or "medium" confidence.
-6. Return your output STRICTLY as a valid JSON object matching this exact schema:
+   - "medium": Moderate historical match exists or partial error pattern overlap.
+   - "low": No relevant historical memories exist, or only weak symptom overlap exists across unrelated services.
+4. If no relevant historical incidents exist or match, explicitly state that no historical incidents were found in Hindsight and base your analysis solely on general DevOps best practices with "low" or "medium" confidence.
+5. Return your output STRICTLY as a valid JSON object matching this exact schema:
 {
   "probable_root_cause": "Detailed explanation of the probable root cause",
   "recommended_action": "Specific step-by-step remediation or investigation steps",
@@ -81,7 +80,7 @@ class AIIncidentService:
         if recalled_memories and recalled_memories.get("success") and recalled_memories.get("results") is not None:
             raw_res = recalled_memories["results"]
             items = filtered_items if filtered_items else []
-            if not items and "filtered_memories" not in recalled_memories:
+            if not items:
                 if isinstance(raw_res, dict):
                     items = raw_res.get("results", []) or raw_res.get("memories", [])
                 elif isinstance(raw_res, list):
@@ -94,7 +93,7 @@ class AIIncidentService:
                 memories_text = json.dumps(items, indent=2)
             else:
                 memory_status = "empty"
-                memories_text = "Hindsight search succeeded, but no unique relevant historical memories were found."
+                memories_text = "Hindsight search succeeded, but no relevant historical memories were found."
 
         user_prompt = f"""--- CURRENT INCIDENT DETAILS ---
 Service: {service}
@@ -126,18 +125,6 @@ Analyze the current incident now and respond strictly with the JSON schema reque
             raw_supporting = parsed.get("supporting_historical_incidents", [])
             supporting = raw_supporting if isinstance(raw_supporting, list) else []
 
-            # Bound confidence evaluation
-            confidence = parsed.get("confidence", "medium")
-            if memory_status in ["empty", "unavailable"]:
-                confidence = "low"
-            elif memory_status == "ok" and not filtered_items:
-                confidence = "low"
-            elif memory_status == "ok" and filtered_items:
-                # Check top relevance score
-                top_score = max([item.get("relevance_score", 0) for item in filtered_items], default=0)
-                if top_score < 40 and confidence == "high":
-                    confidence = "medium"
-
             return {
                 "success": True,
                 "analysis_status": "success",
@@ -147,7 +134,7 @@ Analyze the current incident now and respond strictly with the JSON schema reque
                 "error": error,
                 "probable_root_cause": parsed.get("probable_root_cause", "Unknown root cause"),
                 "recommended_action": parsed.get("recommended_action", "Investigate service logs"),
-                "confidence": confidence,
+                "confidence": parsed.get("confidence", "medium" if memory_status == "ok" else "low"),
                 "reasoning": parsed.get("reasoning", "Analysis generated from incident details"),
                 "supporting_historical_incidents": supporting if memory_status == "ok" else [],
                 "recalled_memories_used": recalled_memories if memory_status != "unavailable" else None,
@@ -210,7 +197,7 @@ Analyze the current incident now and respond strictly with the JSON schema reque
     ) -> Dict[str, Any]:
         """Graceful fallback when Groq API is unavailable or unconfigured."""
         supporting = []
-        if recalled_memories and recalled_memories.get("success") and recalled_memories.get("results") and memory_status == "ok":
+        if recalled_memories and recalled_memories.get("success") and recalled_memories.get("results"):
             supporting.append("Historical memories retrieved from Hindsight (Groq AI unavailable)")
 
         return {
